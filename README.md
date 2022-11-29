@@ -3,7 +3,7 @@ Light Pad
 
 This is some code I threw together to program a Launchpad X light show. 
 
-<iframe width="1280" height="720" src="https://www.youtube-nocookie.com/embed/2WCEHGqT_yE?start=47&amp;showinfo=0" frameborder="0" allowfullscreen></iframe>
+For example, <https://www.youtube.com/watch?v=2WCEHGqT_yE>
 
 To run from source: 
 
