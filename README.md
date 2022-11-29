@@ -3,6 +3,8 @@ Light Pad
 
 This is some code I threw together to program a Launchpad X light show. 
 
+<iframe width="1280" height="720" src="https://www.youtube-nocookie.com/embed/2WCEHGqT_yE?start=47&amp;showinfo=0" frameborder="0" allowfullscreen></iframe>
+
 To run from source: 
 
 	npm install
