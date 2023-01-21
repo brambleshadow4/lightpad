@@ -3,6 +3,8 @@ Light Pad
 
 This is some code I threw together to program a Launchpad X light show. 
 
+For example, <https://www.youtube.com/watch?v=2WCEHGqT_yE>
+
 To run from source: 
 
 	npm install
