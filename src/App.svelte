@@ -4,13 +4,17 @@
 	import ColorPicker from "./ColorPicker.svelte";
 	import KeyframeSequencer from "./KeyframeSequencer.svelte";
 	import Sequencer from "./Sequencer.svelte";
+	import ButtonGrid from "./ButtonGrid.svelte";
 	import {onMount} from "svelte";
 	import {invoke} from '@tauri-apps/api/tauri';
+	import { listen } from '@tauri-apps/api/event'
 	import { convertFileSrc } from '@tauri-apps/api/tauri';
 	import {sendMidi} from "./midi.js";
 	import { window as tauriWindow}  from "@tauri-apps/api"
 	import { TauriEvent } from "@tauri-apps/api/event";
 	import { appWindow } from "@tauri-apps/api/window";
+	import {PlaybackEngine} from "./PlaybackEngine.js";
+	import LightArray from "./LightArray.js";
 
 	tauriWindow.getCurrent().listen(TauriEvent.WINDOW_CLOSE_REQUESTED, () => {
 		
@@ -20,7 +24,7 @@
 
 	onMount(() => {
 
-		doOpenClip(clips[0][0])
+		//doOpenClip(sequence[0][0])
 		// openProject("",""); // can uncomment to auto load a project
 
 		sendMidi([240, 0, 32, 41, 2, 12, 14, 1, 247]) // launchpad X turn on programmer mode.
@@ -33,33 +37,54 @@
 				mainClass = mainClass ? "" : "dark";
 		});
 
+		
+
+		// listen to the `click` event and get a function to remove the event listener
+		// there's also a `once` function that subscribes to an event and automatically unsubscribes the listener on the first event
+		appWindow.listen('midi', (event) => {
+
+
+			let [type, padNumber, value] = event.payload;
+
+			if(type == 144 && value > 0 && clips[page] && clips[page][padNumber] && clips[page][padNumber].attack)
+			{	
+				playClip(clips[page][padNumber].attack);
+			}
+
+
+			console.log(event.payload)
+		});
 	})
 
-	/*appWindow.listen("close", ({ event, payload }) => {
-
-		alert("we are closing this thing I think?");
-		
-		
-	});*/
+	
 
 	var TEMPO_BPM = 120;
 	var filePath = "";
 
-	var lights;
+	var lights = new LightArray();
 	var mainClass = "";	
 	var playbackHead=0;
 	let color = 0;
+
+	let MODE = "Live";
 
 	let blankFrame = [];
 	while(blankFrame.length < 81)
 		blankFrame.push(0);
 
-	let clips = [[{start:0,end:1, track:0, keyframes: {"0": blankFrame.slice()}}],[],[],[]];
+	let sequence = [[{start:0,end:1, track:0, keyframes: {"0": blankFrame.slice()}}],[],[],[]];
+
+	let page = 0;
+	let clips = [];
 	
 	document.addEventListener('contextmenu', event => event.preventDefault());
 
 	let openKeyframe = -1;
 	let openClip = undefined;
+
+	let selectedPad = -1;
+
+	let playback = {};
 
 	let pathToMusic = "";
 
@@ -87,9 +112,9 @@
 		}
 		if(e.key=="Backspace" && openClip)
 		{
-			let i = clips[openClip.track].indexOf(openClip);
-			clips[openClip.track].splice(i,1);
-			clips = clips;
+			let i = sequence[openClip.track].indexOf(openClip);
+			sequence[openClip.track].splice(i,1);
+			sequence = sequence;
 			openClip = undefined 
 			openKeyframe = -1;
 		}
@@ -131,13 +156,11 @@
 			lights.setLightData(openClip.keyframes[nextKeyframe]);
 		}
 	}
-
-	let cp = {};
-	cp.StartTime = -1;
-	cp.Keyframes = []
-	cp.Clips = [];
-	cp.CurrentKeyframe = [];
-		
+	
+	function hasLightClip(clips, page, selectedPad, prop)
+	{
+		return clips[page] && clips[page][selectedPad] && clips[page][selectedPad][prop]
+	}
 
 	function setAudioPlaybackPosition()
 	{
@@ -159,163 +182,20 @@
 	}
 
 
-	function playClip()
+
+	function playTimeline()
 	{
-		openKeyframe = -1;
-
-		if(cp.StartTime == -1)
-		{
-			cp.StartTime = new Date().getTime();
-			cp.Keyframes = Object.keys(openClip.keyframes).map(x => Number(x));
-			cp.Keyframes.sort((a,b) => a-b);
-		}
-
-		let nextKeyframe = cp.Keyframes[0];
-
-		if(nextKeyframe == undefined)
-		{
-			cp.StartTime = -1;
-			return;
-		}
-
-		requestAnimationFrame(playClip);
-		//setTimeout(playClip, 0);
-		let ellapsedTime = new Date().getTime() - cp.StartTime;
-
-		if(ellapsedTime * framesPerMs >= nextKeyframe)
-		{
-			cp.Keyframes.shift();
-			lights.setLightData(openClip.keyframes[nextKeyframe]);
-		}
+		throw Error("unsupport")
 	}
 
-	$:framesPerMs = 48 * TEMPO_BPM/60/1000;
-
-	function playTimeline(_, halt)
+	function playClip(clip)
 	{
-		if(halt)
+		if(!playback.InProgress)
 		{
-			cp.Stop = true;
-			return;
+			playback = new PlaybackEngine(lights, TEMPO_BPM);
+			playback.playClip(clip);
 		}
-
-		if(cp.StartTime == -1)
-		{ 
-			let offset = playbackHead * 192 /framesPerMs;
-			cp.StartTime = new Date().getTime() - offset;
-
-			setAudioPlaybackPosition();
-			if(cp.Audio)
-				cp.Audio.play();
-
-			
-			cp.Keyframes = [[],[],[],[]] // list of next keyframes on each track
-			cp.Composite = [[],[],[],[]]; // list of each 
-			cp.ActiveClip = []; // the clips currently being played
-			cp.Clips = [[],[],[],[]]; // the list of clips per track. Each gets removed slowly
-			cp.ResetBackTo = playbackHead;
-
-			for(let i=0; i<4; i++)
-			{
-				for(let clip of clips[i])
-				{
-					let clipCopy = JSON.parse(JSON.stringify(clip));
-
-					if(clipCopy.end >= playbackHead)
-					{
-						cp.Clips[i].push(clipCopy);
-					}
-				}
-
-				if(cp.Keyframes[i].length == 0 && cp.Clips[i].length > 0)
-				{
-					let clip = cp.Clips[i].shift();
-					cp.ActiveClip[i] = clip;
-
-					let end = (clip.end-clip.start)*192;
-					clip.keyframes[end] = blankFrame.slice(); // remove all lights keyframe 
-					let keyframes = Object.keys(clip.keyframes).filter(x => x <= end).map(x => Number(x) + clip.start * 192);
-					keyframes.sort((a,b) => a-b);
-					cp.Keyframes[i] = keyframes;
-				}
-			}
-		}
-
-		let allZero = true;
-		for(let i=0; i<4; i++)
-		{
-			if(cp.Keyframes[i].length)
-			{
-				allZero = false;
-				break;
-			}
-		}
-
-		if(allZero || cp.Stop)
-		{
-			cp.StartTime = -1;
-			playbackHead = cp.ResetBackTo;
-			if(cp.Audio)
-				cp.Audio.pause();
-			delete cp.Stop;
-			setAudioPlaybackPosition();
-
-			return;
-		}
-
-		let ellapsedTime = new Date().getTime() - cp.StartTime;
 		
-
-		playbackHead = ellapsedTime * framesPerMs/192;
-
-		let compositeUpdated = false;
-
-		for(let i=0; i<4; i++)
-		{
-			while(cp.Keyframes[i][0] != undefined && ellapsedTime * framesPerMs >= cp.Keyframes[i][0])
-			{
-				let k = cp.Keyframes[i].shift();
-				k = k - cp.ActiveClip[i].start * 192;
-
-				cp.Composite[i] = cp.ActiveClip[i].keyframes[k];
-				compositeUpdated = true;
-			}
-
-			if(cp.Keyframes[i].length == 0 && cp.Clips[i].length > 0)
-			{
-				let clip = cp.Clips[i].shift();
-				cp.ActiveClip[i] = clip;
-
-				let end = (clip.end-clip.start)*192;
-				clip.keyframes[end] = blankFrame.slice(); // remove all lights keyframe 
-				let keyframes = Object.keys(clip.keyframes).filter(x => x <= end).map(x => Number(x) + clip.start * 192);
-				keyframes.sort((a,b) => a-b);
-				cp.Keyframes[i] = keyframes;
-			}
-
-			while(cp.Keyframes[i][0] != undefined && ellapsedTime * framesPerMs >= cp.Keyframes[i][0])
-			{
-				let k = cp.Keyframes[i].shift();
-				k = k - cp.ActiveClip[i].start * 192;
-
-				cp.Composite[i] = cp.ActiveClip[i].keyframes[k];
-				compositeUpdated = true;
-			}
-
-		}
-
-		if(compositeUpdated)
-		{
-			let composite = [];
-			for(let i=0; i<81; i++)
-			{
-				composite[i] = cp.Composite[0][i] || cp.Composite[1][i] || cp.Composite[2][i] || cp.Composite[3][i] || 0;
-			}
-
-			lights.setLightData(composite);
-		}
-
-		requestAnimationFrame(playTimeline);
 	}
 
 	function onOpenClip(e)
@@ -340,8 +220,17 @@
 	{
 		let obj = {
 			tempo: TEMPO_BPM,
-			track: pathToMusic,
 			clips
+		};
+		await invoke("save_project", {data: JSON.stringify(obj)});
+	}
+
+	async function saveProjectLegacy()
+	{
+		let obj = {
+			tempo: TEMPO_BPM,
+			track: pathToMusic,
+			clips: sequence
 		};
 		await invoke("save_project", {data: JSON.stringify(obj)});
 	}
@@ -350,10 +239,20 @@
 	{
 		name = name || "";
 		let data = await invoke("open_project", {name});
-
 		let data2 = JSON.parse(data);
 
 		clips = data2.clips;
+		TEMPO_BPM = data2.tempo;
+	}
+
+	async function openProjectLegacy(e, name)
+	{
+		name = name || "";
+		let data = await invoke("open_project", {name});
+
+		let data2 = JSON.parse(data);
+
+		sequence = data2.clips;
 		TEMPO_BPM = data2.tempo;
 		setMusicFile("", data2.track);
 		//console.log(clip)
@@ -361,13 +260,39 @@
 
 		for(let i=0; i<4; i++)
 		{
-			clips[i].sort((a,b) => a.start-b.start);
+			sequence[i].sort((a,b) => a.start-b.start);
 
-			for(let clip of clips[i])
+			for(let clip of sequence[i])
 			{
 				delete clip.keyframes[-1];
 			}
 		}
+	}
+
+	function openAttackClip()
+	{
+		if(selectedPad == -1) 
+			return;
+
+		if(!clips[page])
+			clips[page] = [];
+		if(!clips[page][selectedPad])
+			clips[page][selectedPad] = {attack: {keyframes:{}}}
+
+		clips = clips;
+
+		openClip = clips[page][selectedPad].attack;
+
+		console.log(clips[page]);
+	}
+
+	function changeOpenPad(e)
+	{
+		selectedPad = e.detail;
+		if(clips[page] && clips[page][selectedPad] && clips[page][selectedPad].attack)
+			openClip = clips[page][selectedPad].attack;
+		else
+			openClip = undefined;
 	}
 
 
@@ -384,19 +309,39 @@
 			<button on:click={setMusicFile}>Music File</button><span class="filename" title={pathToMusic}>{shortPathToMusic}</span>
 			<label>BPM:</label> <input bind:value={TEMPO_BPM} type="number" />
 		</div>
-		<Sequencer clips={clips} selectedClip={openClip} on:openClip={onOpenClip} on:playbackHeadMoved  ={setAudioPlaybackPosition} bind:playbackHead={playbackHead}/>
-		<div>
-			<button on:click={() => playTimeline(0, cp.StartTime != -1)}>
-				{cp.StartTime == -1 ? "Play" : "Stop"}
-			</button>
-		</div>
+		{#if MODE == "Sequencer"}
+			<Sequencer clips={sequence} selectedClip={openClip} on:openClip={onOpenClip} on:playbackHeadMoved y={setAudioPlaybackPosition} bind:playbackHead={playbackHead}/>
+			<div>
+				<button on:click={() => playTimeline(0, cp.StartTime != -1)}>
+					{cp.StartTime == -1 ? "Play" : "Stop"}
+				</button>
+			</div>
+		{:else}
+			<ButtonGrid on:change={changeOpenPad}/>
+			{#if selectedPad != -1}
+				<div>
+					<label>Sound:</label> <input type='file' />
+				</div>
+				<div>
+					<label>Lights:</label>
+					<span class={'input-box ' + (hasLightClip(clips, page, selectedPad, "attack")?"":"selected")}>None</span>
+					<span class={'input-box ' + (hasLightClip(clips, page, selectedPad, "attack")?"selected":"")}
+						 on:click={openAttackClip}>Attack</span>
+					<span class='input-box'>Release</span>
+				</div>
+
+			{/if}
+		{/if}
+
 	</div>
 
 	<div class='col2'>
-		<button on:click={playClip}>Play</button><KeyframeSequencer 
-			keyframes={loadedKeyframes} currentKeyframe={openKeyframe} on:openKeyframe={loadKeyframe}/>
-		<div>Color: <ColorPicker bind:value={color} /></div>
-		<LightGrid bind:paintColor={color} bind:this={lights} on:saveKeyframe={saveKeyframe}/>
+		{#if openClip}
+			<button on:click={() => playClip(openClip)}>Play</button><KeyframeSequencer 
+				keyframes={loadedKeyframes} currentKeyframe={openKeyframe} on:openKeyframe={loadKeyframe}/>
+			<div>Color: <ColorPicker bind:value={color} /></div>
+			<LightGrid bind:paintColor={color} lightArray={lights} on:saveKeyframe={saveKeyframe}/>
+		{/if}
 	</div>
 	
 </main>
@@ -437,6 +382,17 @@
 		width:2in;
 		overflow-x: hidden;
 		white-space: pre;
+	}
+
+	.input-box {
+		border:solid 1px white;
+		padding: 0px 3px;
+	}
+
+	.input-box.selected{
+		border:solid 1px transparent;
+
+		background-color: #ff8000;
 	}
 </style>
 
