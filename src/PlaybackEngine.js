@@ -1,4 +1,4 @@
-export {PlaybackEngine}
+export default PlaybackEngine;
 
 function PlaybackEngine(lightArray, tempo)
 {
@@ -10,44 +10,67 @@ function PlaybackEngine(lightArray, tempo)
 
 	this.framesPerMs = 48 * tempo/60/1000;
 
-	this.lights = lightArray
+	this.lights = lightArray;
+	this.queue = [];
+	this.queueStarted = false;
 
 	let self = this;
 
-	/* Clip has the keyframes property */
-	this.playClip = function playClip(clip)
+	this.processQueue = function()
 	{
-		//console.log("playClip");
-
-		if(self.StartTime == -1)
+		for(let i=0; i<self.queue.length; i++)
 		{
-			self.Clip = clip
-			self.StartTime = new Date().getTime();
-			self.Keyframes = Object.keys(clip.keyframes).map(x => Number(x));
-			self.Keyframes.sort((a,b) => a-b);
+			let clip = self.queue[i];
+			let nextKeyframe = clip.Keyframes[0];
+
+			if(nextKeyframe == undefined || clip.InProgress == false)
+			{
+				clip.InProgress = false;
+				self.queue.splice(i,1);
+				i--;
+
+				continue;
+			}
+
+			let ellapsedTime = new Date().getTime() - clip.StartTime;
+
+			if(ellapsedTime * self.framesPerMs >= nextKeyframe)
+			{
+				clip.Keyframes.shift();
+				self.lights.setLightData(clip.Clip.keyframes[nextKeyframe]);
+			}
 		}
 
-		//console.log(self);
 
-		let nextKeyframe = self.Keyframes[0];
+		requestAnimationFrame(self.processQueue);
+	}
 
-		if(nextKeyframe == undefined || self.InProgress == false)
-		{
-			self.InProgress = false;
+
+	/* Clip has the keyframes property */
+	this.playClip = function playClip(lightClip)
+	{
+		self.queue = [];
+
+		if(!this.queueStarted)
+			this.processQueue();
+
+
+
+		if(!lightClip.attack)
 			return;
+
+		let keyframes = Object.keys(lightClip.attack.keyframes).map(x => Number(x));
+		keyframes.sort((a,b) => a-b);	
+
+		let playbackObj = {
+			Clip: lightClip.attack,
+			StartTime: new Date().getTime(),
+			Keyframes: keyframes
 		}
 
-		requestAnimationFrame(self.playClip);
-		//setTimeout(playClip, 0);
-		let ellapsedTime = new Date().getTime() - self.StartTime;
+		self.queue.push(playbackObj)
 
-
-		if(ellapsedTime * self.framesPerMs >= nextKeyframe)
-		{
-
-			self.Keyframes.shift();
-			self.lights.setLightData(self.Clip.keyframes[nextKeyframe]);
-		}
+		
 	}
 
 	this.playSequence = function playSequence(_, halt)

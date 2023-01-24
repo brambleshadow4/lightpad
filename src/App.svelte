@@ -13,8 +13,10 @@
 	import { window as tauriWindow}  from "@tauri-apps/api"
 	import { TauriEvent } from "@tauri-apps/api/event";
 	import { appWindow } from "@tauri-apps/api/window";
-	import {PlaybackEngine} from "./PlaybackEngine.js";
+	import PlaybackEngine from "./PlaybackEngine.js";
+	import AudioEngine from "./AudioEngine.js";
 	import LightArray from "./LightArray.js";
+	import Checkbox from "./Checkbox.svelte";
 
 	tauriWindow.getCurrent().listen(TauriEvent.WINDOW_CLOSE_REQUESTED, () => {
 		
@@ -25,7 +27,7 @@
 	onMount(() => {
 
 		//doOpenClip(sequence[0][0])
-		// openProject("",""); // can uncomment to auto load a project
+		openProject("","C:\\Users\\jdm38\\Desktop\\test.json"); // can uncomment to auto load a project
 
 		sendMidi([240, 0, 32, 41, 2, 12, 14, 1, 247]) // launchpad X turn on programmer mode.
 
@@ -46,13 +48,12 @@
 
 			let [type, padNumber, value] = event.payload;
 
-			if(type == 144 && value > 0 && clips[page] && clips[page][padNumber] && clips[page][padNumber].attack)
+			if((type == 144 || type==176) && value > 0 && clips[page] && clips[page][padNumber])
 			{	
-				playClip(clips[page][padNumber].attack);
+				playClip(clips[page][padNumber]);
 			}
 
-
-			console.log(event.payload)
+			//console.log(event.payload)
 		});
 	})
 
@@ -85,6 +86,8 @@
 	let selectedPad = -1;
 
 	let playback = {};
+	let audioEngine = new AudioEngine();
+	let lightEngine = new PlaybackEngine(lights, TEMPO_BPM);
 
 	let pathToMusic = "";
 
@@ -172,7 +175,6 @@
 
 	async function setMusicFile(e, path)
 	{
-		console.log("path " + path);
 		if(path)
 			pathToMusic = path;
 		else
@@ -182,6 +184,20 @@
 	}
 
 
+	async function setMusicClip()
+	{
+		let newPath = await invoke("pick_music_file");
+
+		if(!clips[page])
+			clips[page] = [];
+		if(!clips[page][selectedPad])
+			clips[page][selectedPad] = {}
+
+		clips[page][selectedPad].audio = newPath;
+
+		audioEngine.addFile(newPath);
+	}
+
 
 	function playTimeline()
 	{
@@ -190,10 +206,11 @@
 
 	function playClip(clip)
 	{
-		if(!playback.InProgress)
+		audioEngine.playFile(clip);
+
+		if(clip.attack)
 		{
-			playback = new PlaybackEngine(lights, TEMPO_BPM);
-			playback.playClip(clip);
+			lightEngine.playClip(clip)
 		}
 		
 	}
@@ -243,6 +260,16 @@
 
 		clips = data2.clips;
 		TEMPO_BPM = data2.tempo;
+
+		for(let page of clips)
+		{
+			for(let clip of page)
+			{
+
+				if(clip && clip.audio)
+					audioEngine.addFile(clip.audio);
+			}
+		}
 	}
 
 	async function openProjectLegacy(e, name)
@@ -255,8 +282,6 @@
 		sequence = data2.clips;
 		TEMPO_BPM = data2.tempo;
 		setMusicFile("", data2.track);
-		//console.log(clip)
-		//let clips = data2.clips
 
 		for(let i=0; i<4; i++)
 		{
@@ -277,22 +302,36 @@
 		if(!clips[page])
 			clips[page] = [];
 		if(!clips[page][selectedPad])
-			clips[page][selectedPad] = {attack: {keyframes:{}}}
+			clips[page][selectedPad] = {};
+
+		if(!clips[page][selectedPad].attack)
+			clips[page][selectedPad].attack = {keyframes:{}}
 
 		clips = clips;
 
 		openClip = clips[page][selectedPad].attack;
-
-		console.log(clips[page]);
 	}
 
 	function changeOpenPad(e)
 	{
+		clips[page][e.detail] = clips[page][e.detail] || {};
 		selectedPad = e.detail;
 		if(clips[page] && clips[page][selectedPad] && clips[page][selectedPad].attack)
 			openClip = clips[page][selectedPad].attack;
 		else
 			openClip = undefined;
+	}
+
+	function shortFileName(clips, page, selectedPad)
+	{
+		if(!clips[page]) return "";
+		if(!clips[page][selectedPad]) return "";
+		if(!clips[page][selectedPad].audio) return "";
+
+		let file = clips[page][selectedPad].audio;
+		file = file.substring(file.lastIndexOf("/")+1)
+		file = file.substring(file.lastIndexOf("\\")+1)
+		return file;
 	}
 
 
@@ -317,17 +356,28 @@
 				</button>
 			</div>
 		{:else}
-			<ButtonGrid on:change={changeOpenPad}/>
+			<ButtonGrid on:change={changeOpenPad} clips={clips[page]} />
 			{#if selectedPad != -1}
-				<div>
-					<label>Sound:</label> <input type='file' />
+				<div class="option-row">
+					<label>Audio:</label>
+					<button on:click={setMusicClip}>File</button>
+					<input readonly type="text" value={shortFileName(clips,page,selectedPad)}/>
 				</div>
-				<div>
+				<div class="option-row">
+					<label></label>
+					<Checkbox bind:value={clips[page][selectedPad].clearAudio} label={"Clear Old Audio"} />
+				</div>
+				<div class="option-row"> 
 					<label>Lights:</label>
 					<span class={'input-box ' + (hasLightClip(clips, page, selectedPad, "attack")?"":"selected")}>None</span>
 					<span class={'input-box ' + (hasLightClip(clips, page, selectedPad, "attack")?"selected":"")}
 						 on:click={openAttackClip}>Attack</span>
 					<span class='input-box'>Release</span>
+				</div>
+				<div class="option-row">
+					<label>&nbsp;</label>
+					<Checkbox bind:value={clips[page][selectedPad].clearLights} label={"Clear Old Lights"} />
+					
 				</div>
 
 			{/if}
@@ -337,7 +387,7 @@
 
 	<div class='col2'>
 		{#if openClip}
-			<button on:click={() => playClip(openClip)}>Play</button><KeyframeSequencer 
+			<button on:click={() => playClip({attack: openClip})}>Play</button><KeyframeSequencer 
 				keyframes={loadedKeyframes} currentKeyframe={openKeyframe} on:openKeyframe={loadKeyframe}/>
 			<div>Color: <ColorPicker bind:value={color} /></div>
 			<LightGrid bind:paintColor={color} lightArray={lights} on:saveKeyframe={saveKeyframe}/>
@@ -374,7 +424,8 @@
 	}
 
 	label {
-		display:inline;
+		display:inline-block;
+		width:.5in;
 	}
 
 	.filename {
@@ -393,6 +444,9 @@
 		border:solid 1px transparent;
 
 		background-color: #ff8000;
+	}
+	.option-row {
+		margin:5px 0px;
 	}
 </style>
 

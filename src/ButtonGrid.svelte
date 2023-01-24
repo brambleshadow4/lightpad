@@ -4,6 +4,9 @@
 	import {createEventDispatcher} from "svelte";
 
 	export let selected = -1;
+	export let clips = [];
+
+	console.log(clips);
 
 	let dispatch = createEventDispatcher();
 
@@ -24,6 +27,18 @@
 		return 'button' + (selected==toPadAddress(x,y)?" selected":"")
 	}
 
+	function hasLightClip(clips, x, y)
+	{
+		let addr = toPadAddress(x,y);
+		return clips[addr] && clips[addr].attack
+	}
+
+	function hasAudio(clips, x, y)
+	{
+		let addr = toPadAddress(x,y);
+		return clips[addr] && clips[addr].audio
+	}
+
 </script>
 
 
@@ -33,7 +48,14 @@
 		<div>
 			{#each [0,1,2,3,4,5,6,7,8] as x}
 				{#if !(y ==0 && x ==8)}
-					<div class={getClass(selected, x, y)} on:click={() => onButtonPress(toPadAddress(x,y))}></div>
+					<div class={getClass(selected, x, y)} on:click={() => onButtonPress(toPadAddress(x,y))}>
+						{#if hasAudio(clips,x,y)}
+							<div class='loaded-audio'></div>
+						{/if}
+						{#if hasLightClip(clips,x,y)}
+							<div class='loaded-light'></div>
+						{/if}
+					</div>
 				{/if}
 			{/each}
 		</div>
@@ -55,9 +77,28 @@
 		margin: 0px 5px 5px 0px;
 
 		user-drag: none;
+		overflow: hidden;
+		position: relative;
 	}
 
 	.button.selected {
 		outline: solid 5px #00ffff;
+	}
+
+	.loaded-light {
+		
+		border-top: .5in solid transparent;
+		border-bottom: .5in solid transparent; 
+		border-right: .5in solid #FFAAAA; 
+	}
+
+	.loaded-audio {
+		
+		border-top: .5in solid transparent;
+		border-bottom: .5in solid transparent; 
+		border-left: .5in solid #AAAAFF; 
+		position: absolute;
+		top:-.5in;
+
 	}
 </style>
