@@ -14,10 +14,27 @@ function PlaybackEngine(lightArray, tempo)
 	this.queue = [];
 	this.queueStarted = false;
 
+	this.composite = {};
+
+	this.nextOrder = 1;
+
+
 	let self = this;
+
+	this.setTempo = function(tempo)
+	{
+		let newTempo = Number(tempo);
+		if(isNaN(newTempo) || !newTempo)
+			return;
+
+		this.framesPerMs = 48 * newTempo/60/1000;
+	}
 
 	this.processQueue = function()
 	{
+		let doUpdate = false;
+		//console.log("her1e")
+
 		for(let i=0; i<self.queue.length; i++)
 		{
 			let clip = self.queue[i];
@@ -27,6 +44,9 @@ function PlaybackEngine(lightArray, tempo)
 			{
 				clip.InProgress = false;
 				self.queue.splice(i,1);
+				delete self.composite[clip.order];
+
+				doUpdate = true;
 				i--;
 
 				continue;
@@ -37,24 +57,46 @@ function PlaybackEngine(lightArray, tempo)
 			if(ellapsedTime * self.framesPerMs >= nextKeyframe)
 			{
 				clip.Keyframes.shift();
-				self.lights.setLightData(clip.Clip.keyframes[nextKeyframe]);
+				self.composite[clip.order] = clip.Clip.keyframes[nextKeyframe];	
+				doUpdate = true;
 			}
 		}
 
-
 		requestAnimationFrame(self.processQueue);
+
+		if(!doUpdate)
+			return;
+
+		let composite = [];
+		while(composite.length < 81)
+			composite.push(0);
+
+		let keys = Object.keys(self.composite).map(x => Number(x)).sort((a,b)=>b-a);
+
+		for(let key of keys)
+		{
+			for(let i=0; i<81; i++)
+			{
+				if(composite[i] == 0)
+					composite[i] = self.composite[key][i];
+			}
+		}
+
+		self.lights.setLightData(composite);
 	}
 
 
 	/* Clip has the keyframes property */
 	this.playClip = function playClip(lightClip)
 	{
-		self.queue = [];
+		if(lightClip.clearLights)
+		{
+			self.composite = {};
+			self.queue = [];
+		}
 
 		if(!this.queueStarted)
 			this.processQueue();
-
-
 
 		if(!lightClip.attack)
 			return;
@@ -63,6 +105,7 @@ function PlaybackEngine(lightArray, tempo)
 		keyframes.sort((a,b) => a-b);	
 
 		let playbackObj = {
+			order: self.nextOrder++,
 			Clip: lightClip.attack,
 			StartTime: new Date().getTime(),
 			Keyframes: keyframes

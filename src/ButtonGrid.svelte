@@ -5,6 +5,7 @@
 
 	export let selected = -1;
 	export let clips = [];
+	export let page = 0;
 
 	console.log(clips);
 
@@ -39,6 +40,13 @@
 		return clips[addr] && clips[addr].audio
 	}
 
+	function changePage(e)
+	{
+		let value = e.value != undefined ? e.value : e.target.value;
+
+		dispatch("changePage", value);
+	}
+
 </script>
 
 
@@ -55,6 +63,12 @@
 						{#if hasLightClip(clips,x,y)}
 							<div class='loaded-light'></div>
 						{/if}
+					</div>
+				{:else}
+					<div class={"control-square"}>
+						<input value={page} on:change={changePage} /><br>
+						
+						<button on:click={()=>changePage({value:(Math.max(page-1,0))})}>-</button><button on:click={()=>changePage({value:(page+1)})}>+</button>
 					</div>
 				{/if}
 			{/each}
@@ -81,6 +95,14 @@
 		position: relative;
 	}
 
+	.control-square {
+		height: .5in;
+		width: .5in;
+		display: inline-block;
+		margin: 0px 5px 5px 0px;
+		vertical-align: top;
+	}
+
 	.button.selected {
 		outline: solid 5px #00ffff;
 	}
@@ -99,6 +121,18 @@
 		border-left: .5in solid #AAAAFF; 
 		position: absolute;
 		top:-.5in;
+	}
 
+	input 
+	{
+		font-size: 8pt;
+		vertical-align: top;
+		width: .4in;
+		margin: 0;
+	}
+	button {
+		font-size: 8pt;
+		vertical-align: top;
+		margin:0;
 	}
 </style>

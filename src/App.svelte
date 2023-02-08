@@ -208,9 +208,19 @@
 	{
 		audioEngine.playFile(clip);
 
+		if(clip.tempo)
+		{
+			lightEngine.setTempo(clip.tempo);
+		}
+
 		if(clip.attack)
 		{
 			lightEngine.playClip(clip)
+		}
+
+		if(!isNaN(clip.pageTo))
+		{
+			onChangePage({detail: clip.pageTo});
 		}
 		
 	}
@@ -218,6 +228,25 @@
 	function onOpenClip(e)
 	{
 		doOpenClip(e.detail);
+	}
+
+	function onChangePage(e)
+	{
+		openKeyframe = -1;
+		openClip = undefined;
+		selectedPad = -1;
+
+		let newPage = Number(e.detail);
+		console.log(e);
+		if(isNaN(newPage))
+			newPage = 0;
+
+		if(clips[newPage] == undefined)
+			clips[newPage] = [];
+
+		//page = newPage;
+		clips = clips;
+		page = newPage;
 	}
 
 	function doOpenClip(clip)
@@ -333,9 +362,6 @@
 		file = file.substring(file.lastIndexOf("\\")+1)
 		return file;
 	}
-
-
-
 </script>
 
 
@@ -356,7 +382,7 @@
 				</button>
 			</div>
 		{:else}
-			<ButtonGrid on:change={changeOpenPad} clips={clips[page]} />
+			<ButtonGrid on:change={changeOpenPad} on:changePage={onChangePage} bind:page={page} clips={clips[page]} />
 			{#if selectedPad != -1}
 				<div class="option-row">
 					<label>Audio:</label>
@@ -377,7 +403,11 @@
 				<div class="option-row">
 					<label>&nbsp;</label>
 					<Checkbox bind:value={clips[page][selectedPad].clearLights} label={"Clear Old Lights"} />
-					
+				</div>
+				<div class="option-row">
+					<label>Control:</label>
+					<input class="short" placeholder="Page to" bind:value={clips[page][selectedPad].pageTo}/>
+					<input class="short" placeholder="Tempo" bind:value={clips[page][selectedPad].tempo}/>
 				</div>
 
 			{/if}
@@ -425,7 +455,12 @@
 
 	label {
 		display:inline-block;
-		width:.5in;
+		width:.6in;
+	}
+
+	input.short
+	{
+		width: 1in;
 	}
 
 	.filename {
