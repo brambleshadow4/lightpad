@@ -1,5 +1,9 @@
 export default PlaybackEngine;
 
+let BLANK_FRAME = [0]
+while(BLANK_FRAME.length < 81)
+	BLANK_FRAME.push(0);
+
 function PlaybackEngine(lightArray, tempo)
 {
 	this.StartTime = -1;
@@ -38,28 +42,63 @@ function PlaybackEngine(lightArray, tempo)
 		for(let i=0; i<self.queue.length; i++)
 		{
 			let clip = self.queue[i];
-			let nextKeyframe = clip.Keyframes[0];
-
-			if(nextKeyframe == undefined || clip.InProgress == false)
-			{
-				clip.InProgress = false;
-				self.queue.splice(i,1);
-				delete self.composite[clip.order];
-
-				doUpdate = true;
-				i--;
-
-				continue;
-			}
 
 			let ellapsedTime = new Date().getTime() - clip.StartTime;
 
-			if(ellapsedTime * self.framesPerMs >= nextKeyframe)
+			if(clip.type == "clip")
 			{
-				clip.Keyframes.shift();
-				self.composite[clip.order] = clip.Clip.keyframes[nextKeyframe];	
-				doUpdate = true;
+				let nextKeyframe = clip.Keyframes[0];
+
+				if(nextKeyframe == undefined || clip.InProgress == false)
+				{
+					clip.InProgress = false;
+					self.queue.splice(i,1);
+					delete self.composite[clip.order];
+
+					doUpdate = true;
+					i--;
+
+					continue;
+				}
+
+				if(ellapsedTime * self.framesPerMs >= nextKeyframe)
+				{
+					clip.Keyframes.shift();
+					self.composite[clip.order] = clip.Clip.keyframes[nextKeyframe];	
+					doUpdate = true;
+				}
 			}
+			if(clip.type == "sequence")
+			{
+				for(let i=0; i<4; i++)
+				{
+					if(clip.Clips[i].length == 0)
+						continue;
+
+					let innerClip = clip.Clips[i][0];
+					let innerClipStart = innerClip.start * 192/self.framesPerMs;
+
+					if(innerClipStart > ellapsedTime)
+						continue;
+
+					let newClip = JSON.parse(JSON.stringify(innerClip));
+					let end = (newClip.end-newClip.start)*192;
+					newClip.keyframes[end] = BLANK_FRAME.slice(); // remove all lights keyframe 
+
+					let keyframes = Object.keys(newClip.keyframes).map(x => Number(x));
+					keyframes.sort((a,b) => a-b);	
+
+					self.queue.push({
+						type: "clip",
+						order: clip.Orders[i],
+						Clip: newClip,
+						StartTime: clip.StartTime + innerClipStart,
+						Keyframes: keyframes
+					});
+
+					clip.Clips[i].shift();
+				}		
+			}	
 		}
 
 		requestAnimationFrame(self.processQueue);
@@ -87,8 +126,15 @@ function PlaybackEngine(lightArray, tempo)
 
 
 	/* Clip has the keyframes property */
-	this.playClip = function playClip(lightClip)
+	this.playClip = function playClip(lightClip, offset)
 	{
+		if(lightClip.tempo)
+		{
+			this.setTempo(lightClip.tempo);
+		}
+
+		offset = offset || 0;
+
 		if(lightClip.clearLights)
 		{
 			self.composite = {};
@@ -98,20 +144,46 @@ function PlaybackEngine(lightArray, tempo)
 		if(!this.queueStarted)
 			this.processQueue();
 
-		if(!lightClip.attack)
+		if(!lightClip.attack && !lightClip.sequence)
 			return;
 
-		let keyframes = Object.keys(lightClip.attack.keyframes).map(x => Number(x));
-		keyframes.sort((a,b) => a-b);	
+		
 
-		let playbackObj = {
-			order: self.nextOrder++,
-			Clip: lightClip.attack,
-			StartTime: new Date().getTime(),
-			Keyframes: keyframes
+		if(lightClip.attack)
+		{
+			let keyframes = Object.keys(lightClip.attack.keyframes).map(x => Number(x));
+			keyframes.sort((a,b) => a-b);	
+
+			self.queue.push({
+				type: "clip",
+				order: self.nextOrder++,
+				Clip: lightClip.attack,
+				StartTime: new Date().getTime(),
+				Keyframes: keyframes
+			});
 		}
 
-		self.queue.push(playbackObj)
+		if(lightClip.sequence)
+		{
+			console.log("adding sequence to playback")
+			let playbackObj = {
+				type: "sequence",
+				StartTime: new Date().getTime() - offset,
+				Clips: [[],[],[],[]], // the list of clips per track. Each gets removed slowly
+				Orders: [self.nextOrder++, self.nextOrder++, self.nextOrder++, self.nextOrder++].reverse()
+			}	
+
+			for(let i=0; i<4; i++)
+			{
+				for(let seqClip of lightClip.sequence[i])
+				{
+					let clipCopy = JSON.parse(JSON.stringify(seqClip));
+					playbackObj.Clips[i].push(clipCopy);
+				}
+			}
+
+			self.queue.push(playbackObj);
+		}
 
 		
 	}
@@ -126,44 +198,8 @@ function PlaybackEngine(lightArray, tempo)
 
 		if(self.StartTime == -1)
 		{ 
-			//let offset = playbackHead * 192 /framesPerMs;
-			self.StartTime = new Date().getTime() - offset;
-
-			setAudioPlaybackPosition();
-			if(self.Audio)
-				self.Audio.play();
 
 			
-			self.Keyframes = [[],[],[],[]] // list of next keyframes on each track
-			self.Composite = [[],[],[],[]]; // list of each 
-			self.ActiveClip = []; // the clips currently being played
-			self.Clips = [[],[],[],[]]; // the list of clips per track. Each gets removed slowly
-			self.ResetBackTo = playbackHead;
-
-			for(let i=0; i<4; i++)
-			{
-				for(let clip of sequence[i])
-				{
-					let clipCopy = JSON.parse(JSON.stringify(clip));
-
-					if(clipCopy.end >= playbackHead)
-					{
-						self.Clips[i].push(clipCopy);
-					}
-				}
-
-				if(self.Keyframes[i].length == 0 && self.Clips[i].length > 0)
-				{
-					let clip = self.Clips[i].shift();
-					self.ActiveClip[i] = clip;
-
-					let end = (clip.end-clip.start)*192;
-					clip.keyframes[end] = blankFrame.slice(); // remove all lights keyframe 
-					let keyframes = Object.keys(clip.keyframes).filter(x => x <= end).map(x => Number(x) + clip.start * 192);
-					keyframes.sort((a,b) => a-b);
-					self.Keyframes[i] = keyframes;
-				}
-			}
 		}
 
 		let allZero = true;

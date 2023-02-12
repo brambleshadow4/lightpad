@@ -34,7 +34,9 @@
 		addEventListener("keydown", function(e) {
 
 			if(e.code == "Space")
-				playTimeline(0, cp.StartTime != -1) 
+			{
+				//playTimeline(0, cp.StartTime != -1) 
+			}
 			if(e.code == "KeyM")
 				mainClass = mainClass ? "" : "dark";
 		});
@@ -67,13 +69,16 @@
 	var playbackHead=0;
 	let color = 0;
 
+	let BLANK_FRAME = [0]
+	while(BLANK_FRAME.length < 81)
+		BLANK_FRAME.push(0);
+
 	let MODE = "Live";
 
-	let blankFrame = [];
-	while(blankFrame.length < 81)
-		blankFrame.push(0);
+	//let sequence = [[{start:0,end:1, track:0, keyframes: {"0": BLANK_FRAME.slice()}}],[],[],[]];
+	let sequence = null;
 
-	let sequence = [[{start:0,end:1, track:0, keyframes: {"0": blankFrame.slice()}}],[],[],[]];
+	// Blank sequence [[{start:0,end:1, track:0, keyframes: {"0": BLANK_FRAME.slice()}}],[],[],[]]
 
 	let page = 0;
 	let clips = [];
@@ -98,6 +103,26 @@
 		return x.substring(Math.max(a,b)+1);
 	}
 
+	function changeOpenClip(newClip)
+	{
+		openKeyframe = -1; //set this first to prevent accidentally wiping anything
+		openClip = newClip;
+		if(newClip)
+		{
+			let k = Object.keys(newClip.keyframes).sort()[0]
+			
+			if(k != undefined)
+			{
+				openKeyframe = k;
+				lights.setLightData(newClip.keyframes[k]);
+				return;
+			}
+		}
+		
+		openKeyframe = -1;
+		lights.setLightData(BLANK_FRAME);
+	}
+
 	$: shortPathToMusic = getShortPath(pathToMusic);
 
 	window.addEventListener('keydown', function(e)
@@ -107,19 +132,16 @@
 			delete openClip.keyframes[openKeyframe];
 			openKeyframe = -1;
 			openClip.keyframes = openClip.keyframes;
-			let x = [0]
-			while(x.length < 81)
-				x.push(0);
 		
-			lights.setLightData(x);
+			lights.setLightData(BLANK_FRAME);
 		}
 		if(e.key=="Backspace" && openClip)
 		{
 			let i = sequence[openClip.track].indexOf(openClip);
 			sequence[openClip.track].splice(i,1);
 			sequence = sequence;
-			openClip = undefined 
-			openKeyframe = -1;
+
+			changeOpenClip(undefined);
 		}
 	});
 
@@ -167,22 +189,11 @@
 
 	function setAudioPlaybackPosition()
 	{
-		if(!cp.Audio)
-			return;
+		//if(!cp.Audio)
+		//	return;
 		let offset = playbackHead * 192 /framesPerMs;
-		cp.Audio.currentTime = offset/1000;
+		//cp.Audio.currentTime = offset/1000;
 	}
-
-	async function setMusicFile(e, path)
-	{
-		if(path)
-			pathToMusic = path;
-		else
-			pathToMusic = await invoke("pick_music_file");
-		 
-		cp.Audio = new Audio(convertFileSrc(pathToMusic));
-	}
-
 
 	async function setMusicClip()
 	{
@@ -208,15 +219,9 @@
 	{
 		audioEngine.playFile(clip);
 
-		if(clip.tempo)
-		{
-			lightEngine.setTempo(clip.tempo);
-		}
 
-		if(clip.attack)
-		{
-			lightEngine.playClip(clip)
-		}
+		lightEngine.playClip(clip)
+
 
 		if(!isNaN(clip.pageTo))
 		{
@@ -227,13 +232,13 @@
 
 	function onOpenClip(e)
 	{
+		console.log(e.detail);
 		doOpenClip(e.detail);
 	}
 
 	function onChangePage(e)
 	{
-		openKeyframe = -1;
-		openClip = undefined;
+		changeOpenClip(undefined);
 		selectedPad = -1;
 
 		let newPage = Number(e.detail);
@@ -251,8 +256,7 @@
 
 	function doOpenClip(clip)
 	{
-		openKeyframe = -1; // close previous keyframe first, so opening a new keyframe doesn't wipe it.
-		openClip = clip;
+		changeOpenClip(clip);
 
 		let k= Object.keys(openClip.keyframes).map(x => Number(x))[0]
 		k = k == undefined ? -1 : k;
@@ -310,7 +314,7 @@
 
 		sequence = data2.clips;
 		TEMPO_BPM = data2.tempo;
-		setMusicFile("", data2.track);
+		//setMusicFile("", data2.track);
 
 		for(let i=0; i<4; i++)
 		{
@@ -320,8 +324,27 @@
 			{
 				delete clip.keyframes[-1];
 			}
-		}
+		}a
 	}
+
+	function removeLightClips()
+	{
+		if(!clips[page] || !clips[page][selectedPad])
+			return;
+
+		delete clips[page][selectedPad].attack;
+		delete clips[page][selectedPad].sequence;
+		clips = clips;
+		changeOpenClip(undefined);
+
+		let noLights =[];
+		while(noLights.length < 81)
+			noLights.push(0)
+		lights.setLightData(noLights);
+
+		sequence = null;
+
+	}	
 
 	function openAttackClip()
 	{
@@ -336,19 +359,41 @@
 		if(!clips[page][selectedPad].attack)
 			clips[page][selectedPad].attack = {keyframes:{}}
 
+		delete clips[page][selectedPad].sequence;
+		sequence = null;
+
 		clips = clips;
 
-		openClip = clips[page][selectedPad].attack;
+		changeOpenClip(clips[page][selectedPad].attack);
+	}
+
+	function openSequence()
+	{
+		if(selectedPad == -1) 
+			return;
+
+		if(!clips[page])
+			clips[page] = [];
+		if(!clips[page][selectedPad])
+			clips[page][selectedPad] = {};
+
+		if(!clips[page][selectedPad].sequence)
+			clips[page][selectedPad].sequence = [[{start:0,end:1, track:0, keyframes: {"0": BLANK_FRAME.slice()}}],[],[],[]]
+
+		delete clips[page][selectedPad].attack;
+
+		sequence = clips[page][selectedPad].sequence
+		clips = clips;
+
+		changeOpenClip(undefined);
 	}
 
 	function changeOpenPad(e)
 	{
 		clips[page][e.detail] = clips[page][e.detail] || {};
 		selectedPad = e.detail;
-		if(clips[page] && clips[page][selectedPad] && clips[page][selectedPad].attack)
-			openClip = clips[page][selectedPad].attack;
-		else
-			openClip = undefined;
+		changeOpenClip(clips[page] && clips[page][selectedPad] && clips[page][selectedPad].attack);
+		
 	}
 
 	function shortFileName(clips, page, selectedPad)
@@ -371,46 +416,53 @@
 		<div>
 			<button on:click={openProject}>Open</button>
 			<button on:click={saveProject}>Save</button>
-			<button on:click={setMusicFile}>Music File</button><span class="filename" title={pathToMusic}>{shortPathToMusic}</span>
 			<label>BPM:</label> <input bind:value={TEMPO_BPM} type="number" />
 		</div>
-		{#if MODE == "Sequencer"}
+		{#if sequence}
 			<Sequencer clips={sequence} selectedClip={openClip} on:openClip={onOpenClip} on:playbackHeadMoved y={setAudioPlaybackPosition} bind:playbackHead={playbackHead}/>
 			<div>
-				<button on:click={() => playTimeline(0, cp.StartTime != -1)}>
-					{cp.StartTime == -1 ? "Play" : "Stop"}
+				<button on:click={() => {}}>
+					{true ? "Play" : "Stop"}
+				</button>
+				<button on:click={() => {sequence = undefined}}>
+					Close
 				</button>
 			</div>
 		{:else}
 			<ButtonGrid on:change={changeOpenPad} on:changePage={onChangePage} bind:page={page} clips={clips[page]} />
-			{#if selectedPad != -1}
-				<div class="option-row">
-					<label>Audio:</label>
-					<button on:click={setMusicClip}>File</button>
-					<input readonly type="text" value={shortFileName(clips,page,selectedPad)}/>
-				</div>
-				<div class="option-row">
-					<label></label>
-					<Checkbox bind:value={clips[page][selectedPad].clearAudio} label={"Clear Old Audio"} />
-				</div>
-				<div class="option-row"> 
-					<label>Lights:</label>
-					<span class={'input-box ' + (hasLightClip(clips, page, selectedPad, "attack")?"":"selected")}>None</span>
-					<span class={'input-box ' + (hasLightClip(clips, page, selectedPad, "attack")?"selected":"")}
-						 on:click={openAttackClip}>Attack</span>
-					<span class='input-box'>Release</span>
-				</div>
-				<div class="option-row">
-					<label>&nbsp;</label>
-					<Checkbox bind:value={clips[page][selectedPad].clearLights} label={"Clear Old Lights"} />
-				</div>
-				<div class="option-row">
-					<label>Control:</label>
-					<input class="short" placeholder="Page to" bind:value={clips[page][selectedPad].pageTo}/>
-					<input class="short" placeholder="Tempo" bind:value={clips[page][selectedPad].tempo}/>
-				</div>
+			
+		{/if}
+		{#if selectedPad != -1}
+			<div class="option-row">
+				<label>Audio:</label>
+				<button on:click={setMusicClip}>File</button>
+				<input readonly type="text" value={shortFileName(clips,page,selectedPad)}/>
+			</div>
+			<div class="option-row">
+				<label></label>
+				<Checkbox bind:value={clips[page][selectedPad].clearAudio} label={"Clear Old Audio"} />
+			</div>
+			<div class="option-row"> 
+				<label>Lights:</label>
+				<span class={'input-box ' + (!hasLightClip(clips, page, selectedPad, "attack")&&!hasLightClip(clips, page, selectedPad, "sequence")?"selected":"")}
+					on:click={removeLightClips}>
+					None
+				</span>
+				<span class={'input-box ' + (hasLightClip(clips, page, selectedPad, "attack")?"selected":"")}
+					 on:click={openAttackClip}>Clip</span>
+				<span class={'input-box ' + (hasLightClip(clips, page, selectedPad, "sequence")?"selected":"")}
+					 on:click={openSequence}>Sequence</span>
+			</div>
+			<div class="option-row">
+				<label>&nbsp;</label>
+				<Checkbox bind:value={clips[page][selectedPad].clearLights} label={"Clear Old Lights"} />
+			</div>
+			<div class="option-row">
+				<label>Control:</label>
+				<input class="short" placeholder="Page to" bind:value={clips[page][selectedPad].pageTo}/>
+				<input class="short" placeholder="Tempo" bind:value={clips[page][selectedPad].tempo}/>
+			</div>
 
-			{/if}
 		{/if}
 
 	</div>

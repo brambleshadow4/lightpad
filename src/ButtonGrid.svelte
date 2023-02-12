@@ -34,6 +34,12 @@
 		return clips[addr] && clips[addr].attack
 	}
 
+	function hasSequence(clips, x, y)
+	{
+		let addr = toPadAddress(x,y);
+		return clips[addr] && clips[addr].sequence
+	}
+
 	function hasAudio(clips, x, y)
 	{
 		let addr = toPadAddress(x,y);
@@ -62,6 +68,9 @@
 						{/if}
 						{#if hasLightClip(clips,x,y)}
 							<div class='loaded-light'></div>
+						{/if}
+						{#if hasSequence(clips,x,y)}
+							<div class='loaded-sequence'></div>
 						{/if}
 					</div>
 				{:else}
@@ -108,10 +117,15 @@
 	}
 
 	.loaded-light {
-		
 		border-top: .5in solid transparent;
 		border-bottom: .5in solid transparent; 
 		border-right: .5in solid #FFAAAA; 
+	}
+
+	.loaded-sequence {
+		border-top: .5in solid transparent;
+		border-bottom: .5in solid transparent; 
+		border-right: .5in solid #ffff66; 
 	}
 
 	.loaded-audio {
