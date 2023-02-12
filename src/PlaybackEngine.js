@@ -53,7 +53,9 @@ function PlaybackEngine(lightArray, tempo)
 				{
 					clip.InProgress = false;
 					self.queue.splice(i,1);
-					delete self.composite[clip.order];
+				
+					if(!clip.preserve)
+						delete self.composite[clip.order];
 
 					doUpdate = true;
 					i--;
@@ -82,16 +84,29 @@ function PlaybackEngine(lightArray, tempo)
 						continue;
 
 					let newClip = JSON.parse(JSON.stringify(innerClip));
-					let end = (newClip.end-newClip.start)*192;
-					newClip.keyframes[end] = BLANK_FRAME.slice(); // remove all lights keyframe 
+					let preserve = false;
+
+					if(clip.Clips[i][1] && clip.Clips[i][1].keyframes[0] && clip.Clips[i][1].start == clip.Clips[i][0].end)
+					{
+						preserve = true;
+					}
+					else
+					{
+						let end = (newClip.end-newClip.start)*192;
+						newClip.keyframes[end] = BLANK_FRAME.slice(); // remove all lights keyframe 
+					}
+					
 
 					let keyframes = Object.keys(newClip.keyframes).map(x => Number(x));
 					keyframes.sort((a,b) => a-b);	
+
+
 
 					self.queue.push({
 						type: "clip",
 						order: clip.Orders[i],
 						Clip: newClip,
+						preserve,
 						StartTime: clip.StartTime + innerClipStart,
 						Keyframes: keyframes
 					});
@@ -111,6 +126,8 @@ function PlaybackEngine(lightArray, tempo)
 			composite.push(0);
 
 		let keys = Object.keys(self.composite).map(x => Number(x)).sort((a,b)=>b-a);
+
+		console.log(self.composite)
 
 		for(let key of keys)
 		{
