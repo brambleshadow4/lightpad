@@ -1,22 +1,6 @@
 <script lang="ts">
 	
-	type LightClip = {
-		keyframes: {[k:number] : number[]},
-		track: number, // the track no of the sequence the clip is on
-		start: number,
-		end: number
-	}
-
-	type Clip =  {
-		audio?: string, // path to the audio files
-		tempo?: string, // tempo to set the project to 
-		attack?: LightClip,
-		sequence?: LightClip[][],
-		clearAudio?: boolean,
-		clearLights?: boolean,
-		pageTo?: number
-	}
-
+	import {Clip, LightClip} from "./types";
 
 	import LightGrid from "./LightGrid.svelte";
 	import ColorPicker from "./ColorPicker.svelte";
@@ -25,15 +9,13 @@
 	import ButtonGrid from "./ButtonGrid.svelte";
 	import {onMount} from "svelte";
 	import {invoke} from '@tauri-apps/api/tauri';
-	import { listen } from '@tauri-apps/api/event'
-	import { convertFileSrc } from '@tauri-apps/api/tauri';
-	import {sendMidi} from "./midi.js";
+	import {sendMidi} from "./midi";
 	import { window as tauriWindow}  from "@tauri-apps/api"
 	import { TauriEvent } from "@tauri-apps/api/event";
 	import { appWindow } from "@tauri-apps/api/window";
-	import PlaybackEngine from "./PlaybackEngine.js";
-	import AudioEngine from "./AudioEngine.js";
-	import LightArray from "./LightArray.js";
+	import PlaybackEngine from "./PlaybackEngine";
+	import AudioEngine from "./AudioEngine";
+	import LightArray from "./LightArray";
 	import Checkbox from "./Checkbox.svelte";
 
 	tauriWindow.getCurrent().listen(TauriEvent.WINDOW_CLOSE_REQUESTED, () => {
@@ -109,7 +91,7 @@
 
 	let playback = {};
 	let audioEngine = new AudioEngine();
-	let lightEngine = new PlaybackEngine(lights, TEMPO_BPM);
+	let lightEngine = new PlaybackEngine(lights, "" + TEMPO_BPM);
 
 	let playbackStartTime = 0;
 
@@ -484,16 +466,16 @@
 		{/if}
 		{#if selectedPad != -1}
 			<div class="option-row">
-				<label>Audio:</label>
+				<span class='label'>Audio:</span>
 				<button on:click={setMusicClip}>File</button>
 				<input readonly type="text" value={shortFileName(clips,page,selectedPad)}/>
 			</div>
 			<div class="option-row">
-				<label></label>
+				<span class='label'></span >
 				<Checkbox bind:value={clips[page][selectedPad].clearAudio} label={"Clear Old Audio"} />
 			</div>
 			<div class="option-row"> 
-				<label>Lights:</label>
+				<span class='label'>Lights:</span>
 				<!-- svelte-ignore a11y-click-events-have-key-events -->
 				<span class={'input-box ' + (!hasLightClip(clips, page, selectedPad, "attack")&&!hasLightClip(clips, page, selectedPad, "sequence")?"selected":"")}
 					on:click={removeLightClips}>
@@ -510,11 +492,11 @@
 					 on:click={openSequence}>Sequence</span>
 			</div>
 			<div class="option-row">
-				<label>&nbsp;</label>
+				<span class='label'>&nbsp;</span>
 				<Checkbox bind:value={clips[page][selectedPad].clearLights} label={"Clear Old Lights"} />
 			</div>
 			<div class="option-row">
-				<label>Control:</label>
+				<span class='label'>Control:</span>
 				<input class="short" placeholder="Page to" bind:value={clips[page][selectedPad].pageTo}/>
 				<input class="short" placeholder="Tempo" bind:value={clips[page][selectedPad].tempo}/>
 			</div>

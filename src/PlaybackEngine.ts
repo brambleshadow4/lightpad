@@ -1,31 +1,58 @@
-export default PlaybackEngine;
+import LightArray from "./LightArray";
+import {LightClip, Clip} from "./types";
 
 let BLANK_FRAME = [0]
 while(BLANK_FRAME.length < 81)
 	BLANK_FRAME.push(0);
 
-function PlaybackEngine(lightArray, tempo)
+
+
+type LiveClip = {
+	StartTime: number,
+	Keyframes: number[],
+	InProgress: boolean,
+	Clip: LightClip,
+
+	preserve: boolean,
+	order: number,
+	type: "clip"
+}
+
+type LiveSequcence = {
+	Clips: LightClip[][],
+	type: "sequence",
+	StartTime: number,
+	InProgress: boolean,
+	Orders: number[]
+}
+
+
+export default class PlaybackEngine
 {
-	this.StartTime = -1;
-	this.Keyframes = []
-	this.Clips = [];
-	this.CurrentKeyframe = [];
-	this.InProgress = true;
+	public StartTime = -1;
+	public Keyframes: number[] = [];
+	public Clips: LightClip[] = [];
+	public CurrentKeyframe = [];
+	public InProgress = true;
 
-	this.framesPerMs = 48 * tempo/60/1000;
+	public framesPerMs = 48 * 120/60/1000;
 
-	this.lights = lightArray;
-	this.queue = [];
-	this.queueStarted = false;
+	public lights: LightArray;
+	public queue: (LiveClip | LiveSequcence)[] = [];
+	public queueStarted = false;
 
-	this.composite = {};
+	public composite = {};
 
-	this.nextOrder = 1;
+	private nextOrder = 1;
+
+	constructor(lightArray: LightArray, tempo: string)
+	{
+		this.lights = lightArray;
+		this.framesPerMs =  48 * Number(tempo)/60/1000;
+	}
 
 
-	let self = this;
-
-	this.setTempo = function(tempo)
+	public setTempo(tempo :string)
 	{
 		let newTempo = Number(tempo);
 		if(isNaN(newTempo) || !newTempo)
@@ -34,13 +61,15 @@ function PlaybackEngine(lightArray, tempo)
 		this.framesPerMs = 48 * newTempo/60/1000;
 	}
 
-	this.processQueue = function()
+	public processQueue()
 	{
 		let doUpdate = false;
 
-		for(let i=0; i<self.queue.length; i++)
+		console.log(this.queue);
+
+		for(let i=0; i<this.queue.length; i++)
 		{
-			let clip = self.queue[i];
+			let clip = this.queue[i];
 
 			let ellapsedTime = new Date().getTime() - clip.StartTime;
 
@@ -51,10 +80,10 @@ function PlaybackEngine(lightArray, tempo)
 				if(nextKeyframe == undefined || clip.InProgress == false)
 				{
 					clip.InProgress = false;
-					self.queue.splice(i,1);
+					this.queue.splice(i,1);
 				
 					if(!clip.preserve)
-						delete self.composite[clip.order];
+						delete this.composite[clip.order];
 
 					doUpdate = true;
 					i--;
@@ -62,10 +91,10 @@ function PlaybackEngine(lightArray, tempo)
 					continue;
 				}
 
-				if(ellapsedTime * self.framesPerMs >= nextKeyframe)
+				if(ellapsedTime * this.framesPerMs >= nextKeyframe)
 				{
 					clip.Keyframes.shift();
-					self.composite[clip.order] = clip.Clip.keyframes[nextKeyframe];	
+					this.composite[clip.order] = clip.Clip.keyframes[nextKeyframe];	
 					doUpdate = true;
 				}
 			}
@@ -77,7 +106,7 @@ function PlaybackEngine(lightArray, tempo)
 						continue;
 
 					let innerClip = clip.Clips[i][0];
-					let innerClipStart = innerClip.start * 192/self.framesPerMs;
+					let innerClipStart = innerClip.start * 192/this.framesPerMs;
 
 					if(innerClipStart > ellapsedTime)
 						continue;
@@ -101,15 +130,14 @@ function PlaybackEngine(lightArray, tempo)
 					let keyframes = Object.keys(newClip.keyframes).map(x => Number(x)).filter(x => x <= end);
 					keyframes.sort((a,b) => a-b);	
 
-
-
-					self.queue.push({
+					this.queue.push({
 						type: "clip",
 						order: clip.Orders[i],
 						Clip: newClip,
 						preserve,
 						StartTime: clip.StartTime + innerClipStart,
-						Keyframes: keyframes
+						Keyframes: keyframes,
+						InProgress: true,
 					});
 
 					clip.Clips[i].shift();
@@ -117,40 +145,43 @@ function PlaybackEngine(lightArray, tempo)
 			}	
 		}
 
-		requestAnimationFrame(self.processQueue);
+		requestAnimationFrame(this.processQueue.bind(this));
 
 		if(!doUpdate)
 			return;
 
-		let composite = [];
+		let composite: number[] = [];
 		while(composite.length < 81)
 			composite.push(0);
 
-		let keys = Object.keys(self.composite).map(x => Number(x)).sort((a,b)=>b-a);
+		let keys = Object.keys(this.composite).map(x => Number(x)).sort((a,b)=>b-a);
+
+		if(keys.length == 0)
+			return;
 
 		for(let key of keys)
 		{
 			for(let i=0; i<81; i++)
 			{
 				if(composite[i] == 0)
-					composite[i] = self.composite[key][i];
+					composite[i] = this.composite[key][i];
 			}
 		}
 
-		self.lights.setLightData(composite);
+		this.lights.setLightData(composite);
 	}
 
 
-	this.stopAll = function()
+	public stopAll()
 	{
 		this.composite = {};
 		this.queue = [];
-		lightArray.setLightData(BLANK_FRAME);
+		this.lights.setLightData(BLANK_FRAME);
 	}
 
 
 	/* Clip has the keyframes property */
-	this.playClip = function playClip(lightClip, offset)
+	public playClip = function playClip(lightClip: Clip, offset: number)
 	{
 		if(lightClip.tempo)
 		{
@@ -161,8 +192,8 @@ function PlaybackEngine(lightArray, tempo)
 
 		if(lightClip.clearLights)
 		{
-			self.composite = {};
-			self.queue = [];
+			this.composite = {};
+			this.queue = [];
 		}
 
 		if(!this.queueStarted)
@@ -178,9 +209,9 @@ function PlaybackEngine(lightArray, tempo)
 			let keyframes = Object.keys(lightClip.attack.keyframes).map(x => Number(x));
 			keyframes.sort((a,b) => a-b);	
 
-			self.queue.push({
+			this.queue.push({
 				type: "clip",
-				order: self.nextOrder++,
+				order: this.nextOrder++,
 				Clip: lightClip.attack,
 				StartTime: new Date().getTime(),
 				Keyframes: keyframes
@@ -189,25 +220,26 @@ function PlaybackEngine(lightArray, tempo)
 
 		if(lightClip.sequence)
 		{
-			let playbackObj = {
+			let playbackObj: LiveSequcence = {
 				type: "sequence",
 				StartTime: new Date().getTime() - offset,
 				Clips: [[],[],[],[]], // the list of clips per track. Each gets removed slowly
-				Orders: [self.nextOrder++, self.nextOrder++, self.nextOrder++, self.nextOrder++].reverse()
+				Orders: [this.nextOrder++, this.nextOrder++, this.nextOrder++, this.nextOrder++].reverse(),
+				InProgress: true,
 			}	
 
 			for(let i=0; i<4; i++)
 			{
 				for(let seqClip of lightClip.sequence[i])
 				{
-					let clipCopy = JSON.parse(JSON.stringify(seqClip));
+					let clipCopy: LightClip = JSON.parse(JSON.stringify(seqClip));
 
-					if(clipCopy.start*192/self.framesPerMs >= offset)
+					if(clipCopy.start*192/this.framesPerMs >= offset)
 						playbackObj.Clips[i].push(clipCopy);
 				}
 			}
 
-			self.queue.push(playbackObj);
+			this.queue.push(playbackObj);
 		}
 	}
 }

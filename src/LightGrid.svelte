@@ -1,8 +1,9 @@
-<script>
+<script lang="ts">
 
 	import {createEventDispatcher} from "svelte";
 	import {colors} from "./colors.js";
-	export let lightArray = null;
+    import LightArray from "./LightArray";
+	export let lightArray: LightArray | null = null;
 	export let paintColor = 0;
 
 	let dispatch = createEventDispatcher();
@@ -12,7 +13,7 @@
 		lightArray = lightArray;
 	}
 
-	function onMouseOver(e, light)
+	function onMouseOver(e:MouseEvent, light)
 	{
 		if(e.buttons == 1)
 		{
@@ -39,6 +40,7 @@
 	{#each lightArray.array as outer}
 		<div>
 			{#each outer as light}
+				<!-- svelte-ignore a11y-mouse-events-have-key-events -->
 				<div class='light' 
 					style={"background-color: " + colors[light.componentColor]}
 					on:mouseover={(e) => onMouseOver(e, light)}

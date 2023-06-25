@@ -1,19 +1,13 @@
-export default AudioEngine;
-
 import { convertFileSrc } from '@tauri-apps/api/tauri';
+import {Clip} from "./types";
 
-function AudioEngine()
+export default class AudioEngine
 {
-	this.audioLookup = {};
+	private audioLookup = {};
 
-	this.isReady = function()
+	public playFile = function(clip: Clip, offsetMs?: number)
 	{
-
-	}
-
-	this.playFile = function(clip, offsetMs)
-	{
-		let offset = offsetMs/1000 || 0;
+		let offset = offsetMs == undefined ? 0:  offsetMs/1000;
 
 		if(clip.clearAudio)
 		{
@@ -29,7 +23,7 @@ function AudioEngine()
 		audio.play();
 	}
 
-	this.stopAll = function()
+	public stopAll = function()
 	{
 		for(let key in this.audioLookup)
 		{
@@ -38,7 +32,7 @@ function AudioEngine()
 		}
 	}
 
-	this.addFile = function(url)
+	public addFile = function(url: string)
 	{
 		if(!this.audioLookup[url])
 			this.audioLookup[url] = new Audio(convertFileSrc(url));

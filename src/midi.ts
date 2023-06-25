@@ -1,6 +1,7 @@
 import {invoke} from '@tauri-apps/api/tauri';
+export {sendMidi}
 
-function padArray(arr)
+function padArray(arr: number[]): number[]
 {
 	let newArr = arr.slice();
 	while(newArr.length < 32)
@@ -10,7 +11,7 @@ function padArray(arr)
 	return newArr;
 }
 
-function sendMidi(bytes)
+function sendMidi(bytes: number[])
 {
 	if(bytes.length > 32)
 		throw new Error("Supporting MIDI messages longer than 32 bytes is not support :(");
@@ -23,4 +24,3 @@ function sendMidi(bytes)
 	});	
 }
 
-export {sendMidi}
