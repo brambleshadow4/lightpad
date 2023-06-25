@@ -11,15 +11,13 @@ function AudioEngine()
 
 	}
 
-	this.playFile = function(clip)
+	this.playFile = function(clip, offsetMs)
 	{
+		let offset = offsetMs/1000 || 0;
+
 		if(clip.clearAudio)
 		{
-			for(let key in this.audioLookup)
-			{
-				this.audioLookup[key].pause();
-				this.audioLookup[key].currentTime = 0;
-			}
+			this.stopAll();
 		}
 
 		if(!clip.audio)
@@ -27,8 +25,17 @@ function AudioEngine()
 
 		let audio = this.audioLookup[clip.audio];
 
-		audio.currentTime = 0;
+		audio.currentTime = offset;
 		audio.play();
+	}
+
+	this.stopAll = function()
+	{
+		for(let key in this.audioLookup)
+		{
+			this.audioLookup[key].pause();
+			this.audioLookup[key].currentTime = 0;
+		}
 	}
 
 	this.addFile = function(url)

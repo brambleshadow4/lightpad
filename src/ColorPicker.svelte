@@ -1,6 +1,6 @@
 
 <script>
-	import {colors} from "./colors.js";
+	import {colors} from "./colors.ts";
 
 	let octals = [0,1,2,3,4,5,6,7];
 	let open = false;
@@ -11,13 +11,13 @@
 </script>
 
 
+<!-- svelte-ignore a11y-click-events-have-key-events -->
 <div class='square' on:click={() => {open = true;}} style={"background-color: " + colors[value]}></div>
 
 {#if open}
+	<!-- svelte-ignore a11y-click-events-have-key-events -->
 	<main class='pinned' on:click={() => {open = false;}}>
-		
 		<div>
-			
 			{#each octals as y}
 				<div>
 					{#each octals as x}

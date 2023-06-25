@@ -1,5 +1,23 @@
-<script>
+<script lang="ts">
 	
+	type LightClip = {
+		keyframes: {[k:number] : number[]},
+		track: number, // the track no of the sequence the clip is on
+		start: number,
+		end: number
+	}
+
+	type Clip =  {
+		audio?: string, // path to the audio files
+		tempo?: string, // tempo to set the project to 
+		attack?: LightClip,
+		sequence?: LightClip[][],
+		clearAudio?: boolean,
+		clearLights?: boolean,
+		pageTo?: number
+	}
+
+
 	import LightGrid from "./LightGrid.svelte";
 	import ColorPicker from "./ColorPicker.svelte";
 	import KeyframeSequencer from "./KeyframeSequencer.svelte";
@@ -27,14 +45,15 @@
 	onMount(() => {
 
 		//doOpenClip(sequence[0][0])
-		openProject("","C:\\Users\\jdm38\\Desktop\\test.json"); // can uncomment to auto load a project
+		//openProject("","C:\\Users\\jdm38\\Desktop\\test.json"); // can uncomment to auto load a project
 
 		sendMidi([240, 0, 32, 41, 2, 12, 14, 1, 247]) // launchpad X turn on programmer mode.
 
 		addEventListener("keydown", function(e) {
 
-			if(e.code == "Space")
+			if(e.code == "Space" && sequence)
 			{
+				handleSequencePlayback();
 				//playTimeline(0, cp.StartTime != -1) 
 			}
 			if(e.code == "KeyM")
@@ -45,7 +64,7 @@
 
 		// listen to the `click` event and get a function to remove the event listener
 		// there's also a `once` function that subscribes to an event and automatically unsubscribes the listener on the first event
-		appWindow.listen('midi', (event) => {
+		appWindow.listen('midi', (event: {payload:[number, number, number]}) => {
 
 
 			let [type, padNumber, value] = event.payload;
@@ -58,8 +77,6 @@
 			//console.log(event.payload)
 		});
 	})
-
-	
 
 	var TEMPO_BPM = 120;
 	var filePath = "";
@@ -76,17 +93,17 @@
 	let MODE = "Live";
 
 	//let sequence = [[{start:0,end:1, track:0, keyframes: {"0": BLANK_FRAME.slice()}}],[],[],[]];
-	let sequence = null;
+	let sequence: LightClip[][] | null = null;
 
 	// Blank sequence [[{start:0,end:1, track:0, keyframes: {"0": BLANK_FRAME.slice()}}],[],[],[]]
 
 	let page = 0;
-	let clips = [];
+	let clips: Clip[][] = [[]];
 	
 	document.addEventListener('contextmenu', event => event.preventDefault());
 
 	let openKeyframe = -1;
-	let openClip = undefined;
+	let openClip: LightClip | undefined = undefined;
 
 	let selectedPad = -1;
 
@@ -94,22 +111,26 @@
 	let audioEngine = new AudioEngine();
 	let lightEngine = new PlaybackEngine(lights, TEMPO_BPM);
 
+	let playbackStartTime = 0;
+
 	let pathToMusic = "";
 
-	function getShortPath(x)
+
+	function getShortPath(x: String)
 	{
 		let a = x.lastIndexOf("/");
 		let b = x.lastIndexOf("\\");
 		return x.substring(Math.max(a,b)+1);
 	}
 
-	function changeOpenClip(newClip)
+	function changeOpenClip(newClip: LightClip)
 	{
+		let hadOldClip = openClip;
 		openKeyframe = -1; //set this first to prevent accidentally wiping anything
 		openClip = newClip;
 		if(newClip)
 		{
-			let k = Object.keys(newClip.keyframes).sort()[0]
+			let k = Number(Object.keys(newClip.keyframes).sort()[0])
 			
 			if(k != undefined)
 			{
@@ -118,9 +139,11 @@
 				return;
 			}
 		}
-		
+
 		openKeyframe = -1;
-		lights.setLightData(BLANK_FRAME);
+
+		if(hadOldClip)
+			lights.setLightData(BLANK_FRAME);
 	}
 
 	$: shortPathToMusic = getShortPath(pathToMusic);
@@ -155,7 +178,7 @@
 
 	function loadKeyframe(e)
 	{
-		let nextKeyframe = e.detail;
+		let nextKeyframe: number = e.detail;
 
 		if(!openClip.keyframes[nextKeyframe])
 		{
@@ -182,22 +205,22 @@
 		}
 	}
 	
-	function hasLightClip(clips, page, selectedPad, prop)
+	function hasLightClip(clips: Clip[][], page:number, selectedPad:number, prop:string)
 	{
 		return clips[page] && clips[page][selectedPad] && clips[page][selectedPad][prop]
 	}
 
-	function setAudioPlaybackPosition()
+	function setAudioPlaybackPosition(): void
 	{
 		//if(!cp.Audio)
 		//	return;
-		let offset = playbackHead * 192 /framesPerMs;
+		let offset = playbackHead * 192 / playbackFramesPerMs;
 		//cp.Audio.currentTime = offset/1000;
 	}
 
 	async function setMusicClip()
 	{
-		let newPath = await invoke("pick_music_file");
+		let newPath: string = await invoke("pick_music_file");
 
 		if(!clips[page])
 			clips[page] = [];
@@ -215,12 +238,56 @@
 		throw Error("unsupport")
 	}
 
-	function playClip(clip)
+	let playbackStartPosition = 0;
+	let playbackFramesPerMs = 0;
+
+	function handleSequencePlayback()
 	{
-		audioEngine.playFile(clip);
+		if(playbackStartTime)
+		{
+			audioEngine.stopAll();
+			lightEngine.stopAll();
+			playbackHead = playbackStartPosition;
+			playbackStartTime = 0;
+			return;
+		}
+
+		let tempo = Number(clips[page][selectedPad].tempo) || TEMPO_BPM; 
+		playbackFramesPerMs = 48 * tempo/60/1000;
+		let offsetMs = playbackHead * 192 / playbackFramesPerMs;
+
+		playbackStartTime = new Date().getTime();
+		playbackStartPosition = playbackHead;
+
+		console.log(playbackStartPosition);
+
+		playClip(clips[page][selectedPad], offsetMs);
+
+		sequencePlaybackLoop();
+	}
+
+	function sequencePlaybackLoop()
+	{
+		let ellapsed = new Date().getTime() - playbackStartTime;
+		playbackHead = playbackStartPosition + ellapsed * playbackFramesPerMs/192;
 
 
-		lightEngine.playClip(clip)
+		if(lightEngine.queue.length == 0)
+		{
+			playbackHead = playbackStartPosition;
+			playbackStartTime = 0;
+			return;
+		}
+
+		requestAnimationFrame(sequencePlaybackLoop);
+	}
+
+	function playClip(clip, offset?: number )
+	{	
+		offset = offset || 0;
+
+		audioEngine.playFile(clip, offset);
+		lightEngine.playClip(clip, offset)
 
 
 		if(!isNaN(clip.pageTo))
@@ -285,10 +352,10 @@
 		await invoke("save_project", {data: JSON.stringify(obj)});
 	}
 
-	async function openProject(e, name)
+	async function openProject(_e?: any, name?: string)
 	{
 		name = name || "";
-		let data = await invoke("open_project", {name});
+		let data: string = await invoke("open_project", {name});
 		let data2 = JSON.parse(data);
 
 		clips = data2.clips;
@@ -303,28 +370,6 @@
 					audioEngine.addFile(clip.audio);
 			}
 		}
-	}
-
-	async function openProjectLegacy(e, name)
-	{
-		name = name || "";
-		let data = await invoke("open_project", {name});
-
-		let data2 = JSON.parse(data);
-
-		sequence = data2.clips;
-		TEMPO_BPM = data2.tempo;
-		//setMusicFile("", data2.track);
-
-		for(let i=0; i<4; i++)
-		{
-			sequence[i].sort((a,b) => a.start-b.start);
-
-			for(let clip of sequence[i])
-			{
-				delete clip.keyframes[-1];
-			}
-		}a
 	}
 
 	function removeLightClips()
@@ -357,7 +402,7 @@
 			clips[page][selectedPad] = {};
 
 		if(!clips[page][selectedPad].attack)
-			clips[page][selectedPad].attack = {keyframes:{}}
+			clips[page][selectedPad].attack = {keyframes:{}, track:0, start:-1, end:-1}
 
 		delete clips[page][selectedPad].sequence;
 		sequence = null;
@@ -365,6 +410,11 @@
 		clips = clips;
 
 		changeOpenClip(clips[page][selectedPad].attack);
+	}
+
+	function openPattern()
+	{
+
 	}
 
 	function openSequence()
@@ -388,7 +438,7 @@
 		changeOpenClip(undefined);
 	}
 
-	function changeOpenPad(e)
+	function changeOpenPad(e: {detail: number})
 	{
 		clips[page][e.detail] = clips[page][e.detail] || {};
 		selectedPad = e.detail;
@@ -419,12 +469,12 @@
 			<label>BPM:</label> <input bind:value={TEMPO_BPM} type="number" />
 		</div>
 		{#if sequence}
-			<Sequencer clips={sequence} selectedClip={openClip} on:openClip={onOpenClip} on:playbackHeadMoved y={setAudioPlaybackPosition} bind:playbackHead={playbackHead}/>
+			<Sequencer clips={sequence} selectedClip={openClip} on:openClip={onOpenClip} on:playbackHeadMoved={setAudioPlaybackPosition} bind:playbackHead={playbackHead}/>
 			<div>
-				<button on:click={() => {}}>
-					{true ? "Play" : "Stop"}
+				<button on:click={handleSequencePlayback}>
+					{playbackStartTime ? "Stop" : "Play"}
 				</button>
-				<button on:click={() => {sequence = undefined}}>
+				<button class='close-button' on:click={() => {sequence = undefined}}>
 					Close
 				</button>
 			</div>
@@ -444,12 +494,18 @@
 			</div>
 			<div class="option-row"> 
 				<label>Lights:</label>
+				<!-- svelte-ignore a11y-click-events-have-key-events -->
 				<span class={'input-box ' + (!hasLightClip(clips, page, selectedPad, "attack")&&!hasLightClip(clips, page, selectedPad, "sequence")?"selected":"")}
 					on:click={removeLightClips}>
 					None
 				</span>
-				<span class={'input-box ' + (hasLightClip(clips, page, selectedPad, "attack")?"selected":"")}
+				<!-- svelte-ignore a11y-click-events-have-key-events -->
+				<span class={'input-box ' + (hasLightClip(clips, page, selectedPad, "attack") ? "selected":"")}
 					 on:click={openAttackClip}>Clip</span>
+				<!-- svelte-ignore a11y-click-events-have-key-events -->
+				<span class={'input-box ' + (hasLightClip(clips, page, selectedPad, "pattern") ? "selected":"")}
+					 on:click={openPattern}>Pattern</span>
+				<!-- svelte-ignore a11y-click-events-have-key-events -->
 				<span class={'input-box ' + (hasLightClip(clips, page, selectedPad, "sequence")?"selected":"")}
 					 on:click={openSequence}>Sequence</span>
 			</div>
@@ -534,6 +590,10 @@
 	}
 	.option-row {
 		margin:5px 0px;
+	}
+
+	.close-button {
+		float: right;
 	}
 </style>
 

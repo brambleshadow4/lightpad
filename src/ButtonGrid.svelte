@@ -40,6 +40,12 @@
 		return clips[addr] && clips[addr].sequence
 	}
 
+	function hasPattern(clips, x, y)
+	{
+		let addr = toPadAddress(x,y);
+		return clips[addr] && clips[addr].pattern
+	}
+
 	function hasAudio(clips, x, y)
 	{
 		let addr = toPadAddress(x,y);

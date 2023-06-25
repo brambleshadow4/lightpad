@@ -1,4 +1,6 @@
 import svelte from 'rollup-plugin-svelte';
+import autoPreprocess from 'svelte-preprocess';
+import typescript from '@rollup/plugin-typescript';
 import commonjs from '@rollup/plugin-commonjs';
 import resolve from '@rollup/plugin-node-resolve';
 import livereload from 'rollup-plugin-livereload';
@@ -28,6 +30,7 @@ function serve() {
 	};
 }
 
+
 export default {
 	input: 'src/main.js',
 	output: {
@@ -38,11 +41,14 @@ export default {
 	},
 	plugins: [
 		svelte({
+			preprocess: autoPreprocess({}), // options available https://github.com/sveltejs/svelte-preprocess/blob/master/docs/preprocessing.md
 			compilerOptions: {
 				// enable run-time checks when not in production
 				dev: !production
 			}
 		}),
+
+		typescript({ sourceMap: !production }),
 		// we'll extract any component CSS out into
 		// a separate file - better for performance
 		css({ output: 'bundle.css' }),

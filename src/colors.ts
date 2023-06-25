@@ -1,4 +1,4 @@
-let colors = ["#616161",
+let colors: string[] = ["#616161",
 "#B3B3B3",
 "#DDDDDD",
 "#FFFFFF",

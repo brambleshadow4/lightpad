@@ -37,7 +37,6 @@ function PlaybackEngine(lightArray, tempo)
 	this.processQueue = function()
 	{
 		let doUpdate = false;
-		//console.log("her1e")
 
 		for(let i=0; i<self.queue.length; i++)
 		{
@@ -86,6 +85,8 @@ function PlaybackEngine(lightArray, tempo)
 					let newClip = JSON.parse(JSON.stringify(innerClip));
 					let preserve = false;
 
+					let end = (newClip.end-newClip.start)*192;
+
 					if(clip.Clips[i][1] && clip.Clips[i][1].keyframes[0] && clip.Clips[i][1].start == clip.Clips[i][0].end)
 					{
 						preserve = true;
@@ -97,7 +98,7 @@ function PlaybackEngine(lightArray, tempo)
 					}
 					
 
-					let keyframes = Object.keys(newClip.keyframes).map(x => Number(x));
+					let keyframes = Object.keys(newClip.keyframes).map(x => Number(x)).filter(x => x <= end);
 					keyframes.sort((a,b) => a-b);	
 
 
@@ -127,8 +128,6 @@ function PlaybackEngine(lightArray, tempo)
 
 		let keys = Object.keys(self.composite).map(x => Number(x)).sort((a,b)=>b-a);
 
-		console.log(self.composite)
-
 		for(let key of keys)
 		{
 			for(let i=0; i<81; i++)
@@ -139,6 +138,14 @@ function PlaybackEngine(lightArray, tempo)
 		}
 
 		self.lights.setLightData(composite);
+	}
+
+
+	this.stopAll = function()
+	{
+		this.composite = {};
+		this.queue = [];
+		lightArray.setLightData(BLANK_FRAME);
 	}
 
 
@@ -182,7 +189,6 @@ function PlaybackEngine(lightArray, tempo)
 
 		if(lightClip.sequence)
 		{
-			console.log("adding sequence to playback")
 			let playbackObj = {
 				type: "sequence",
 				StartTime: new Date().getTime() - offset,
@@ -195,104 +201,13 @@ function PlaybackEngine(lightArray, tempo)
 				for(let seqClip of lightClip.sequence[i])
 				{
 					let clipCopy = JSON.parse(JSON.stringify(seqClip));
-					playbackObj.Clips[i].push(clipCopy);
+
+					if(clipCopy.start*192/self.framesPerMs >= offset)
+						playbackObj.Clips[i].push(clipCopy);
 				}
 			}
 
 			self.queue.push(playbackObj);
 		}
-
-		
-	}
-
-	this.playSequence = function playSequence(_, halt)
-	{
-		if(halt)
-		{
-			self.Stop = true;
-			return;
-		}
-
-		if(self.StartTime == -1)
-		{ 
-
-			
-		}
-
-		let allZero = true;
-		for(let i=0; i<4; i++)
-		{
-			if(self.Keyframes[i].length)
-			{
-				allZero = false;
-				break;
-			}
-		}
-
-		if(allZero || self.Stop)
-		{
-			self.StartTime = -1;
-			playbackHead = self.ResetBackTo;
-			if(self.Audio)
-				self.Audio.pause();
-			delete self.Stop;
-			setAudioPlaybackPosition();
-
-			return;
-		}
-
-		let ellapsedTime = new Date().getTime() - self.StartTime;
-		
-
-		// playbackHead = ellapsedTime * framesPerMs/192;
-
-		let compositeUpdated = false;
-
-		for(let i=0; i<4; i++)
-		{
-			while(self.Keyframes[i][0] != undefined && ellapsedTime * framesPerMs >= self.Keyframes[i][0])
-			{
-				let k = self.Keyframes[i].shift();
-				k = k - self.ActiveClip[i].start * 192;
-
-				self.Composite[i] = self.ActiveClip[i].keyframes[k];
-				compositeUpdated = true;
-			}
-
-			if(self.Keyframes[i].length == 0 && self.Clips[i].length > 0)
-			{
-				let clip = self.Clips[i].shift();
-				self.ActiveClip[i] = clip;
-
-				let end = (clip.end-clip.start)*192;
-				clip.keyframes[end] = blankFrame.slice(); // remove all lights keyframe 
-				let keyframes = Object.keys(clip.keyframes).filter(x => x <= end).map(x => Number(x) + clip.start * 192);
-				keyframes.sort((a,b) => a-b);
-				self.Keyframes[i] = keyframes;
-			}
-
-			while(self.Keyframes[i][0] != undefined && ellapsedTime * framesPerMs >= self.Keyframes[i][0])
-			{
-				let k = self.Keyframes[i].shift();
-				k = k - self.ActiveClip[i].start * 192;
-
-				self.Composite[i] = self.ActiveClip[i].keyframes[k];
-				compositeUpdated = true;
-			}
-
-		}
-
-		if(compositeUpdated)
-		{
-			let composite = [];
-			for(let i=0; i<81; i++)
-			{
-				composite[i] = cp.Composite[0][i] || cp.Composite[1][i] || cp.Composite[2][i] || cp.Composite[3][i] || 0;
-			}
-
-			self.lights.setLightData(composite);
-		}
-
-		requestAnimationFrame(self.playSequence);
 	}
 }
