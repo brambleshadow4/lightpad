@@ -1,3 +1,4 @@
+import { Z_ASCII } from "zlib";
 import LightArray from "./LightArray";
 import {LightClip, Clip} from "./types";
 
@@ -64,8 +65,6 @@ export default class PlaybackEngine
 	public processQueue()
 	{
 		let doUpdate = false;
-
-		console.log(this.queue);
 
 		for(let i=0; i<this.queue.length; i++)
 		{
@@ -181,8 +180,9 @@ export default class PlaybackEngine
 
 
 	/* Clip has the keyframes property */
-	public playClip = function playClip(lightClip: Clip, offset: number)
+	public playClip(lightClip: Clip, options: {offset?: number, launchedFromPad?: number})
 	{
+		let {offset, launchedFromPad} = options
 		if(lightClip.tempo)
 		{
 			this.setTempo(lightClip.tempo);
@@ -199,8 +199,6 @@ export default class PlaybackEngine
 		if(!this.queueStarted)
 			this.processQueue();
 
-		if(!lightClip.attack && !lightClip.sequence)
-			return;
 
 		
 
@@ -214,7 +212,74 @@ export default class PlaybackEngine
 				order: this.nextOrder++,
 				Clip: lightClip.attack,
 				StartTime: new Date().getTime(),
-				Keyframes: keyframes
+				Keyframes: keyframes,
+				InProgress: true,
+				preserve: false
+			});
+		}
+
+		if(lightClip.pattern)
+		{
+			console.log("running pattern")
+			console.log(launchedFromPad)
+			if(!launchedFromPad) {
+				console.log("here we are")
+				return;
+			}
+
+			let launchX = (launchedFromPad - 11) % 10
+			let launchY = Math.floor((launchedFromPad - 11) / 10);
+
+			let lowerBoundX = 7 - launchX;
+			let lowerBoundY = 7 - launchY;
+
+
+	
+			let copy: Clip = JSON.parse(JSON.stringify(lightClip));
+			if(!copy.pattern) return;
+
+			for(let key of Object.keys(copy.pattern.keyframes))
+			{
+				let arr: number[] = [];
+				for(let y=0; y<9; y++)
+				{
+					for(let x=0; x<9; x++)
+					{	
+						if(y ==0 || x == 8)
+						{
+							arr.push(0);
+							continue;
+						}
+							
+						
+						let flipY = 8-y;
+						let kx = x+7-launchX;
+						let ky = flipY+7-launchY;
+
+						let index = (14-ky)*15 + kx;
+
+						arr.push(copy.pattern.keyframes[key][index]);
+					}
+				}
+				copy.pattern.keyframes[key] = arr;
+
+			}
+
+			console.log("made it here");
+
+			console.log(copy)
+
+			let keyframes = Object.keys(copy.pattern.keyframes).map(x => Number(x));
+			keyframes.sort((a,b) => a-b);	
+
+			this.queue.push({
+				type: "clip",
+				order: this.nextOrder++,
+				Clip: copy.pattern,
+				StartTime: new Date().getTime(),
+				Keyframes: keyframes,
+				InProgress: true,
+				preserve: false
 			});
 		}
 

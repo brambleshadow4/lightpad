@@ -27,7 +27,7 @@
 	onMount(() => {
 
 		//doOpenClip(sequence[0][0])
-		//openProject("","C:\\Users\\jdm38\\Desktop\\test.json"); // can uncomment to auto load a project
+		openProject("","D:\\!--\\lightpad.proj\\demo.json"); // can uncomment to auto load a project
 
 		sendMidi([240, 0, 32, 41, 2, 12, 14, 1, 247]) // launchpad X turn on programmer mode.
 
@@ -53,7 +53,7 @@
 
 			if((type == 144 || type==176) && value > 0 && clips[page] && clips[page][padNumber])
 			{	
-				playClip(clips[page][padNumber]);
+				playClip(clips[page][padNumber], {launchedFromPad: padNumber});
 			}
 
 			//console.log(event.payload)
@@ -72,6 +72,10 @@
 	while(BLANK_FRAME.length < 81)
 		BLANK_FRAME.push(0);
 
+	let BLANK_PATTERN = []
+	while(BLANK_PATTERN.length < 15*15)
+		BLANK_PATTERN.push(0);
+
 	let MODE = "Live";
 
 	//let sequence = [[{start:0,end:1, track:0, keyframes: {"0": BLANK_FRAME.slice()}}],[],[],[]];
@@ -86,12 +90,15 @@
 
 	let openKeyframe = -1;
 	let openClip: LightClip | undefined = undefined;
+	let clipCopyBuffer: LightClip | undefined;
 
 	let selectedPad = -1;
 
 	let playback = {};
 	let audioEngine = new AudioEngine();
 	let lightEngine = new PlaybackEngine(lights, "" + TEMPO_BPM);
+
+
 
 	let playbackStartTime = 0;
 
@@ -105,6 +112,17 @@
 		return x.substring(Math.max(a,b)+1);
 	}
 
+	function getCurrentClip()
+	{
+		if(clips[page][selectedPad] && clips[page][selectedPad].pattern)
+		{
+			return {pattern: openClip};
+		}
+		
+		return {attack: openClip};
+
+	}
+
 	function changeOpenClip(newClip: LightClip)
 	{
 		let hadOldClip = openClip;
@@ -114,7 +132,7 @@
 		{
 			let k = Number(Object.keys(newClip.keyframes).sort()[0])
 			
-			if(k != undefined)
+			if(!isNaN(k))
 			{
 				openKeyframe = k;
 				lights.setLightData(newClip.keyframes[k]);
@@ -125,7 +143,13 @@
 		openKeyframe = -1;
 
 		if(hadOldClip)
-			lights.setLightData(BLANK_FRAME);
+		{
+			if(newClip.isPattern)
+				lights.setLightData(BLANK_PATTERN);
+			else
+				lights.setLightData(BLANK_FRAME);
+		}
+			
 	}
 
 	$: shortPathToMusic = getShortPath(pathToMusic);
@@ -148,13 +172,30 @@
 
 			changeOpenClip(undefined);
 		}
+		if(e.key.toUpperCase()  == "C" && e.ctrlKey && selectedPad != -1)
+		{
+			clipCopyBuffer = JSON.parse(JSON.stringify(clips[page][selectedPad]));
+		}
+
+
+		console.log(e);
+
+		if(e.key.toUpperCase() == "V" && e.ctrlKey && clipCopyBuffer && selectedPad != -1)
+		{
+			console.log("pasting");
+			console.log(clipCopyBuffer);
+			clips[page][selectedPad] = JSON.parse(JSON.stringify(clipCopyBuffer));
+		}
 	});
 
 	function saveKeyframe()
 	{
 		if(openKeyframe != -1)
-		{
-			openClip.keyframes[openKeyframe] = lights.getLightData();
+		{	
+			if(openClip.isPattern)
+				openClip.keyframes[openKeyframe] = lights.getPatternData();
+			else
+				openClip.keyframes[openKeyframe] = lights.getLightData();
 		}
 	}
 
@@ -183,7 +224,14 @@
 
 		if(openClip.keyframes[nextKeyframe])
 		{
-			lights.setLightData(openClip.keyframes[nextKeyframe]);
+			console.log("loading keyframe");
+
+			console.log(nextKeyframe);
+
+			if(openClip.isPattern)
+				lights.setPatternData(openClip.keyframes[nextKeyframe]);
+			else
+				lights.setLightData(openClip.keyframes[nextKeyframe]);
 		}
 	}
 	
@@ -243,7 +291,7 @@
 
 		console.log(playbackStartPosition);
 
-		playClip(clips[page][selectedPad], offsetMs);
+		playClip(clips[page][selectedPad], {offset: offsetMs});
 
 		sequencePlaybackLoop();
 	}
@@ -264,12 +312,14 @@
 		requestAnimationFrame(sequencePlaybackLoop);
 	}
 
-	function playClip(clip, offset?: number )
+	function playClip(clip, options:{offset?: number, launchedFromPad?: number })
 	{	
+		console.log("playing clip")
+		let {offset, launchedFromPad} = options;
 		offset = offset || 0;
 
 		audioEngine.playFile(clip, offset);
-		lightEngine.playClip(clip, offset)
+		lightEngine.playClip(clip, options)
 
 
 		if(!isNaN(clip.pageTo))
@@ -361,6 +411,7 @@
 
 		delete clips[page][selectedPad].attack;
 		delete clips[page][selectedPad].sequence;
+		delete clips[page][selectedPad].pattern;
 		clips = clips;
 		changeOpenClip(undefined);
 
@@ -387,6 +438,7 @@
 			clips[page][selectedPad].attack = {keyframes:{}, track:0, start:-1, end:-1}
 
 		delete clips[page][selectedPad].sequence;
+		delete clips[page][selectedPad].pattern;
 		sequence = null;
 
 		clips = clips;
@@ -396,7 +448,26 @@
 
 	function openPattern()
 	{
+		if(selectedPad == -1) 
+			return;
+		
+		if(!clips[page])
+			clips[page] = [];
+		if(!clips[page][selectedPad])
+			clips[page][selectedPad] = {};
 
+		if(!clips[page][selectedPad].pattern)
+			clips[page][selectedPad].pattern = {keyframes:{}, track:0, start:-1, end:-1, isPattern: true}
+
+		delete clips[page][selectedPad].attack;
+		delete clips[page][selectedPad].sequence;
+		sequence = null;
+
+		clips = clips;
+
+		changeOpenClip(clips[page][selectedPad].pattern);
+
+		lights.setPatternPosition(selectedPad);
 	}
 
 	function openSequence()
@@ -413,6 +484,7 @@
 			clips[page][selectedPad].sequence = [[{start:0,end:1, track:0, keyframes: {"0": BLANK_FRAME.slice()}}],[],[],[]]
 
 		delete clips[page][selectedPad].attack;
+		delete clips[page][selectedPad].pattern;
 
 		sequence = clips[page][selectedPad].sequence
 		clips = clips;
@@ -477,7 +549,7 @@
 			<div class="option-row"> 
 				<span class='label'>Lights:</span>
 				<!-- svelte-ignore a11y-click-events-have-key-events -->
-				<span class={'input-box ' + (!hasLightClip(clips, page, selectedPad, "attack")&&!hasLightClip(clips, page, selectedPad, "sequence")?"selected":"")}
+				<span class={'input-box ' + (!hasLightClip(clips, page, selectedPad, "attack")&&!hasLightClip(clips, page, selectedPad, "sequence")&&!hasLightClip(clips,page,selectedPad,"pattern")?"selected":"")}
 					on:click={removeLightClips}>
 					None
 				</span>
@@ -507,10 +579,10 @@
 
 	<div class='col2'>
 		{#if openClip}
-			<button on:click={() => playClip({attack: openClip})}>Play</button><KeyframeSequencer 
+			<button on:click={() => playClip(getCurrentClip(), {launchedFromPad: selectedPad})}>Play</button><KeyframeSequencer 
 				keyframes={loadedKeyframes} currentKeyframe={openKeyframe} on:openKeyframe={loadKeyframe}/>
 			<div>Color: <ColorPicker bind:value={color} /></div>
-			<LightGrid bind:paintColor={color} lightArray={lights} on:saveKeyframe={saveKeyframe}/>
+			<LightGrid bind:paintColor={color} lightArray={lights} on:saveKeyframe={saveKeyframe} mode={openClip.isPattern ? "pattern" : "one-to-one"}  />
 		{/if}
 	</div>
 	

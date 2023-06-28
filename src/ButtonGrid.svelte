@@ -68,6 +68,7 @@
 		<div>
 			{#each [0,1,2,3,4,5,6,7,8] as x}
 				{#if !(y ==0 && x ==8)}
+					<!-- svelte-ignore a11y-click-events-have-key-events -->
 					<div class={getClass(selected, x, y)} on:click={() => onButtonPress(toPadAddress(x,y))}>
 						{#if hasAudio(clips,x,y)}
 							<div class='loaded-audio'></div>
@@ -77,6 +78,9 @@
 						{/if}
 						{#if hasSequence(clips,x,y)}
 							<div class='loaded-sequence'></div>
+						{/if}
+						{#if hasPattern(clips,x,y)}
+							<div class='loaded-pattern'></div>
 						{/if}
 					</div>
 				{:else}
@@ -132,6 +136,12 @@
 		border-top: .5in solid transparent;
 		border-bottom: .5in solid transparent; 
 		border-right: .5in solid #ffff66; 
+	}
+
+	.loaded-pattern {
+		border-top: .5in solid transparent;
+		border-bottom: .5in solid transparent; 
+		border-right: .5in solid #73ff8a; 
 	}
 
 	.loaded-audio {
