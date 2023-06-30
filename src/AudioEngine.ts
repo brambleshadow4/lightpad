@@ -19,7 +19,11 @@ export default class AudioEngine
 
 		let audio = this.audioLookup[clip.audio];
 
+		if (!isNaN(Number(clip.audioStart)))
+			offset = Number(clip.audioStart)
+
 		audio.currentTime = offset;
+		
 		audio.play();
 	}
 

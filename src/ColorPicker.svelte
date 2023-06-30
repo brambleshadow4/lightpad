@@ -1,11 +1,21 @@
 
 <script>
 	import {colors} from "./colors.ts";
+	import {createEventDispatcher} from "svelte";
+
+	let dispatch = createEventDispatcher();
 
 	let octals = [0,1,2,3,4,5,6,7];
 	let open = false;
 
 	export let value = 0;
+
+	function changeColor(newColor)
+	{
+		value = newColor;
+		open = false;
+		dispatch("change", newColor)
+	}
 
 
 </script>
@@ -23,13 +33,13 @@
 					{#each octals as x}
 						<div class='square' 
 							style={"background-color: " + colors[y*8+x]}
-							on:click={() => {value = y*8+x; open = false}}
+							on:click={() => changeColor(y*8+x)}
 							></div>
 					{/each}
 					{#each octals as x}
 						<div class='square' 
 							style={"background-color: " + colors[y*8+x+64]}
-							on:click={() => {value = y*8+x+64; open = false}}
+							on:click={() => changeColor(y*8+x)}
 							></div>
 					{/each}
 				</div>

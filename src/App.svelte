@@ -17,6 +17,7 @@
 	import AudioEngine from "./AudioEngine";
 	import LightArray from "./LightArray";
 	import Checkbox from "./Checkbox.svelte";
+    import { Console } from "console";
 
 	tauriWindow.getCurrent().listen(TauriEvent.WINDOW_CLOSE_REQUESTED, () => {
 		
@@ -27,7 +28,9 @@
 	onMount(() => {
 
 		//doOpenClip(sequence[0][0])
-		openProject("","D:\\!--\\lightpad.proj\\demo.json"); // can uncomment to auto load a project
+		openProject("","default"); // can uncomment to auto load a project
+
+		page = 1;
 
 		sendMidi([240, 0, 32, 41, 2, 12, 14, 1, 247]) // launchpad X turn on programmer mode.
 
@@ -51,9 +54,60 @@
 
 			let [type, padNumber, value] = event.payload;
 
-			if((type == 144 || type==176) && value > 0 && clips[page] && clips[page][padNumber])
+			let adjPageNumber = page;
+
+			if(padNumber == 95 || padNumber == 98)
+			{
+				adjPageNumber = 0;
+			}
+
+			if((type == 144 || type==176) && value > 0 && clips[adjPageNumber])
 			{	
-				playClip(clips[page][padNumber], {launchedFromPad: padNumber});
+
+				let clip = clips[adjPageNumber][padNumber] || {}
+
+				if(padNumber % 10 == 9)
+				{
+					console.log("here")
+					
+					if(clip.pageTo as any == "" || clip.pageTo == undefined)
+					{
+						clip = JSON.parse(JSON.stringify(clip));
+
+						let partialPage = page % 10;
+						let pageTo = 9 - (padNumber - 9)/10 + page - partialPage
+						
+						if(partialPage == 8 && pageTo % 10 == 1)
+						{
+							pageTo += 10;
+						}
+						if(partialPage == 1 && pageTo % 10 == 8 && pageTo > 10)
+						{
+							pageTo -= 10;
+						}
+
+						console.log(pageTo);
+						clip.pageTo = pageTo
+					}
+				}
+
+				if(padNumber == 95)
+				{
+					clip = JSON.parse(JSON.stringify(clip));
+					clip.pageTo = 0;
+				}
+
+				if(padNumber == 98)
+				{
+					clip = JSON.parse(JSON.stringify(clip));
+					clip.clearAudio = true;
+					clip.clearLights = true;
+					clip.attack = {keyframes: {"0": BLANK_FRAME}, start:0, end:0, track:0}
+				}
+
+				console.log("page to" + clip.pageTo)
+				if(clip)
+					playClip(clip, {launchedFromPad: padNumber});
 			}
 
 			//console.log(event.payload)
@@ -67,6 +121,7 @@
 	var mainClass = "";	
 	var playbackHead=0;
 	let color = 0;
+	let replaceColor = 0;
 
 	let BLANK_FRAME = [0]
 	while(BLANK_FRAME.length < 81)
@@ -90,7 +145,7 @@
 
 	let openKeyframe = -1;
 	let openClip: LightClip | undefined = undefined;
-	let clipCopyBuffer: LightClip | undefined;
+	let clipCopyBuffer: {type: "lights", "data": LightClip} | undefined;
 
 	let selectedPad = -1;
 
@@ -174,17 +229,24 @@
 		}
 		if(e.key.toUpperCase()  == "C" && e.ctrlKey && selectedPad != -1)
 		{
-			clipCopyBuffer = JSON.parse(JSON.stringify(clips[page][selectedPad]));
+			clipCopyBuffer = {
+				type: "lights",
+				data: JSON.parse(JSON.stringify(clips[page][selectedPad]))
+			}
 		}
 
 
 		console.log(e);
 
-		if(e.key.toUpperCase() == "V" && e.ctrlKey && clipCopyBuffer && selectedPad != -1)
+		if(e.key.toUpperCase() == "V" && e.ctrlKey && clipCopyBuffer && selectedPad != -1 && !sequence )
 		{
-			console.log("pasting");
-			console.log(clipCopyBuffer);
-			clips[page][selectedPad] = JSON.parse(JSON.stringify(clipCopyBuffer));
+			let x: {data: Clip} = JSON.parse(JSON.stringify(clipCopyBuffer))
+			clips[page][selectedPad].attack = x.data.attack;
+			clips[page][selectedPad].pattern = x.data.pattern;
+			clips[page][selectedPad].sequence = x.data.sequence;
+			clips = clips;
+			console.log(x);
+			console.log("this thing happpened");
 		}
 	});
 
@@ -386,22 +448,38 @@
 
 	async function openProject(_e?: any, name?: string)
 	{
+
+		console.log("openProject called " + name)
+
 		name = name || "";
 		let data: string = await invoke("open_project", {name});
 		let data2 = JSON.parse(data);
 
+		if(!data2)
+			return;
+
+		page = 0;
+
 		clips = data2.clips;
 		TEMPO_BPM = data2.tempo;
 
+		lightEngine.setTempo("" + TEMPO_BPM);
+
+		console.log(clips);
+
 		for(let page of clips)
 		{
+			if(!page) continue;
+
 			for(let clip of page)
 			{
-
 				if(clip && clip.audio)
 					audioEngine.addFile(clip.audio);
 			}
 		}
+
+		
+
 	}
 
 	function removeLightClips()
@@ -497,7 +575,35 @@
 		clips[page][e.detail] = clips[page][e.detail] || {};
 		selectedPad = e.detail;
 		changeOpenClip(clips[page] && clips[page][selectedPad] && clips[page][selectedPad].attack);
+	}
+
+	function replaceColorInPattern()
+	{
+		if(color == replaceColor || !openClip) 
+			return;
 		
+		for(let k in openClip.keyframes)
+		{
+			for (let i in openClip.keyframes[k])
+			{
+				if(openClip.keyframes[k][i] == color)
+					openClip.keyframes[k][i] = replaceColor;
+			}
+		}
+
+		console.log("did replacement");
+
+		color = replaceColor;
+		openClip = openClip;
+
+		if(openClip.isPattern)
+		{
+			lights.setPatternData(openClip.keyframes[openKeyframe])
+		}
+		else
+		{
+			lights.setLightData(openClip.keyframes[openKeyframe])
+		}
 	}
 
 	function shortFileName(clips, page, selectedPad)
@@ -541,6 +647,7 @@
 				<span class='label'>Audio:</span>
 				<button on:click={setMusicClip}>File</button>
 				<input readonly type="text" value={shortFileName(clips,page,selectedPad)}/>
+				<input type="text" bind:value={clips[page][selectedPad].audioStart} />
 			</div>
 			<div class="option-row">
 				<span class='label'></span >
@@ -581,7 +688,10 @@
 		{#if openClip}
 			<button on:click={() => playClip(getCurrentClip(), {launchedFromPad: selectedPad})}>Play</button><KeyframeSequencer 
 				keyframes={loadedKeyframes} currentKeyframe={openKeyframe} on:openKeyframe={loadKeyframe}/>
-			<div>Color: <ColorPicker bind:value={color} /></div>
+			<div>
+				Color: <ColorPicker bind:value={color} on:change={(e) => {replaceColor = e.detail}} /> 
+				Replace with <ColorPicker bind:value={replaceColor} on:change={replaceColorInPattern} />
+			</div>
 			<LightGrid bind:paintColor={color} lightArray={lights} on:saveKeyframe={saveKeyframe} mode={openClip.isPattern ? "pattern" : "one-to-one"}  />
 		{/if}
 	</div>

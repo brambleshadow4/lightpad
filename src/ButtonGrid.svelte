@@ -31,25 +31,25 @@
 	function hasLightClip(clips, x, y)
 	{
 		let addr = toPadAddress(x,y);
-		return clips[addr] && clips[addr].attack
+		return clips && clips[addr] && clips[addr].attack
 	}
 
 	function hasSequence(clips, x, y)
 	{
 		let addr = toPadAddress(x,y);
-		return clips[addr] && clips[addr].sequence
+		return clips && clips[addr] && clips[addr].sequence
 	}
 
 	function hasPattern(clips, x, y)
 	{
 		let addr = toPadAddress(x,y);
-		return clips[addr] && clips[addr].pattern
+		return clips && clips[addr] && clips[addr].pattern
 	}
 
 	function hasAudio(clips, x, y)
 	{
 		let addr = toPadAddress(x,y);
-		return clips[addr] && clips[addr].audio
+		return clips && clips[addr] && clips[addr].audio
 	}
 
 	function changePage(e)

@@ -10,6 +10,7 @@ type LightClip = {
 
 type Clip =  {
 	audio?: string, // path to the audio files
+	audioStart?: string, // how many seconds in to start the audio
 	tempo?: string, // tempo to set the project to 
 	attack?: LightClip,
 	pattern?: LightClip,

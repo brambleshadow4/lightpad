@@ -60,6 +60,9 @@ export default class PlaybackEngine
 			return;
 
 		this.framesPerMs = 48 * newTempo/60/1000;
+
+		console.log("set tempo");
+		console.log(tempo)
 	}
 
 	public processQueue()
@@ -187,6 +190,8 @@ export default class PlaybackEngine
 		{
 			this.setTempo(lightClip.tempo);
 		}
+
+		
 
 		offset = offset || 0;
 

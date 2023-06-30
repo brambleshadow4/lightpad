@@ -12,6 +12,8 @@ use std::fs::File;
 use std::io::Read;
 use std::io::Write;
 use tauri::{Manager,Window};
+use winreg::enums::*;
+use winreg::RegKey;
 
 static CONN: Mutex<Option<MidiOutputConnection>> = Mutex::new(None);
 static INPUT_CONN: Mutex<Option<MidiInputConnection<()>>> = Mutex::new(None);
@@ -45,14 +47,26 @@ fn recieve_midi()
 #[tauri::command]
 fn open_project(name:String) -> String {
 
+	return match get_project_data(name) {
+		Ok(s) => s,
+		Err(e) => "null".to_string(),
+	}	
+
+}
+
+fn get_project_data(name: String) -> Result<String, Box<dyn std::error::Error>> {
+
 	let mut contents = String::new();
 
-	if name != "" {
-		let mut file = File::open(&name).unwrap();
+	if name == "default" {
+
+		let actual_name = get_previous_project()?;
+
+		let mut file = File::open(&actual_name).unwrap();
 		file.read_to_string(&mut contents);
 
-		println!("opening up {}", name);
-		return contents;
+		println!("opening up {}", actual_name);
+		return Ok(contents)
 
 	}
 	else 
@@ -65,6 +79,9 @@ fn open_project(name:String) -> String {
 		match files {
 			Some(buf) => {
 
+				write_file_to_registry(buf.to_str().unwrap().to_string());
+
+
 				let mut file = File::open(buf).unwrap();
 				
 				file.read_to_string(&mut contents);
@@ -72,8 +89,26 @@ fn open_project(name:String) -> String {
 			_ => ()
 		}
 
-		return contents
+		return Ok(contents)
 	}
+}
+
+
+
+
+fn write_file_to_registry(name:String) {
+
+	let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+
+	let key:RegKey = match hkcu.open_subkey("SOFTWARE\\brambleshadow4.net\\lightpad") {
+		Ok(v) => v,
+		Err(_) => {
+			let (a, _) =  hkcu.create_subkey("SOFTWARE\\brambleshadow4.net\\lightpad").expect("who gives a crap");
+			a
+		}
+	};
+
+	key.set_value("last project", &name);
 }
 
 #[tauri::command]
@@ -112,11 +147,19 @@ fn save_project(data:String) -> Result<(), &'static str> {
 	}
 }
 
+fn get_previous_project() -> Result<String, Box<dyn std::error::Error>> {
+	let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+
+	let key = hkcu.open_subkey("SOFTWARE\\brambleshadow4.net\\lightpad")?;
+	let val: String = key.get_value("last project")?;
+
+	Ok(val)
+}
+
 
 fn main() {
 
 	let out = MidiOutput::new("launchpadOUT").expect("reason");
-
 	let launchpad_in = MidiInput::new("launchpadIN").expect("reason");
 
 	println!("Output Ports: ");

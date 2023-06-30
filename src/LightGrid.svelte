@@ -5,7 +5,6 @@
     import LightArray from "./LightArray";
 	export let lightArray: LightArray | null = null;
 	export let paintColor = 0;
-	export let relativePadPosition = 0;
 
 	export let mode: "one-to-one" | "pattern" = "one-to-one";
 
